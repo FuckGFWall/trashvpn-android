@@ -64,7 +64,16 @@
     <string name="scan_action">Scan</string>
     <string name="switching_protocol">Switching protocol</string>
     <string name="registering">Registering with Cloudflare WARP</string>
-    <string name="step_format">%1$d/3 %2$s</string>
+    <string name="preparation_step_format">%1$d/%2$d %3$s · %4$s</string>
+    <string name="registration_device_stage">Prepare device</string>
+    <string name="registration_configure_stage">Configure protocol</string>
+    <string name="registration_save_stage">Save credentials</string>
+    <string name="scan_screen_stage">Screen candidates</string>
+    <string name="scan_verify_stage">Verify nodes</string>
+    <string name="scan_summary_stage">Review results</string>
+    <string name="scan_resume_candidates">Loading previously screened candidates</string>
+    <string name="scan_supplementary">Screening additional candidates</string>
+    <string name="scan_update_cache">Updating the local cache</string>
     <string name="pausing">Pausing</string>
     <string name="pause">Pause</string>
     <string name="vpn_starting">Starting VPN</string>
@@ -93,8 +102,6 @@
     <string name="scan_candidate_range">Candidates %1$d–%2$d of %3$d</string>
     <string name="scan_fine">WARP validation</string>
     <string name="scan_candidate_results">%1$s · Verified %2$d/%3$d</string>
-    <string name="scan_blocked">Android did not allow background selection</string>
-    <string name="scan_channel">Node selection</string>
     <string name="scan_paused">Selection paused</string>
     <string name="scan_interrupted">Selection interrupted</string>
     <string name="scan_finished">Selection complete</string>
@@ -124,4 +131,14 @@
     <string name="language_zh_hant" translatable="false">繁體中文</string>
     <string name="language_en" translatable="false">English</string>
     <string name="language_fa" translatable="false">فارسی</string>
+    <string name="update_available">A new version is available: %1$s</string>
+    <string name="export_nodes">Nodes</string>
+    <string name="node_export">Node export</string>
+    <string name="node_export_copy">Copy</string>
+    <string name="node_export_copied">Nodes copied</string>
+    <string name="node_export_failed">Could not copy the cached nodes</string>
+    <plurals name="node_export_count">
+        <item quantity="one">Copy %1$d node from the local cache.</item>
+        <item quantity="other">Copy %1$d nodes from the local cache.</item>
+    </plurals>
 </resources>

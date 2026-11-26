@@ -67,10 +67,8 @@ final class HotRoute {
                     .append(n.port).append("\n    network: [tcp]\n    target: www.cloudflare.com:443\n    proxy: ")
                     .append(n.name).append('\n');
         y.append("proxies:\n");
-        for(Map.Entry<String,Node> entry:nodes.entrySet()) {
-            String s=WarpProfile.render(p,entry.getKey(),identity,settings);
-            y.append(s.substring(s.indexOf("\nproxies:\n")+10).replace("name: "+WarpProfile.PROXY,"name: "+entry.getValue().name));
-        }
+        for(Map.Entry<String,Node> entry:nodes.entrySet())
+            y.append(WarpProfile.proxyYaml(p,entry.getKey(),entry.getValue().name,identity,settings));
         return y.toString();
     }
 }

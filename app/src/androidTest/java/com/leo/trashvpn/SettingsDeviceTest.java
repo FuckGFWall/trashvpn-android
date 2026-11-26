@@ -25,6 +25,63 @@ import static org.junit.Assert.*;
 @RunWith(AndroidJUnit4.class)
 public class SettingsDeviceTest {
     @Rule public final SimplifiedUiRule language=new SimplifiedUiRule();
+    @Test public void exportFormatDropdownIsAvailableEvenWithOnlyClash() {
+        Instrumentation tester=InstrumentationRegistry.getInstrumentation();
+        MainActivity activity=(MainActivity)tester.startActivitySync(new Intent(tester.getTargetContext(),MainActivity.class)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+        try {
+            tester.runOnMainSync(()->{
+                android.widget.LinearLayout parent=new android.widget.LinearLayout(activity);
+                HomeStyle style=new HomeStyle(activity,HomeStyle.DEFAULT_THEME);
+                NodeExportSettings export=new NodeExportSettings(activity,parent,style,WarpProfile.Protocol.AWG);
+                TextView format=parent.findViewById(R.id.settings_node_export_format);
+                assertTrue(format.isEnabled());
+                assertTrue(format.isClickable());
+                assertEquals(activity.getString(R.string.settings_dropdown,"Clash"),format.getText().toString());
+                android.view.Menu menu=export.formatMenu(format).getMenu();
+                assertEquals(1,menu.size());
+                assertEquals("Clash",menu.getItem(0).getTitle().toString());
+                export.refresh(WarpProfile.Protocol.MASQUE);
+                assertTrue(format.isEnabled());
+                assertEquals(1,export.formatMenu(format).getMenu().size());
+                export.refresh(WarpProfile.Protocol.WG);
+                assertEquals(3,export.formatMenu(format).getMenu().size());
+                TextView count=parent.findViewById(R.id.settings_node_export_count);
+                assertFalse(count.getText().toString().contains("\n"));
+            });
+        } finally {
+            tester.runOnMainSync(activity::finish);
+        }
+    }
+
+    @Test public void availableUpdateIsTheFirstSettingsRowAndUsesTheOfficialDownloadUrl() throws Exception {
+        Instrumentation tester=InstrumentationRegistry.getInstrumentation();
+        MainActivity activity=(MainActivity)tester.startActivitySync(new Intent(tester.getTargetContext(),MainActivity.class)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+        android.content.IntentFilter url=new android.content.IntentFilter(Intent.ACTION_VIEW);
+        url.addCategory(Intent.CATEGORY_BROWSABLE);
+        url.addDataScheme("https");
+        url.addDataAuthority("itmanager.top",null);
+        url.addDataPath("/download.html",android.os.PatternMatcher.PATTERN_LITERAL);
+        Instrumentation.ActivityMonitor browser=tester.addMonitor(url,null,true);
+        try {
+            tester.runOnMainSync(()->{
+                find(activity.getWindow().getDecorView(),"设置",true).performClick();
+                TextView update=activity.findViewById(R.id.settings_update);
+                activity.showAvailableUpdate("v1.1.0");
+                assertSame(update,((ViewGroup)update.getParent()).getChildAt(0));
+                assertEquals(View.VISIBLE,update.getVisibility());
+                assertEquals("有新版本：v1.1.0",update.getText().toString());
+                assertTrue(update.performClick());
+                activity.showAvailableUpdate(null);
+                assertEquals(View.GONE,update.getVisibility());
+            });
+            assertEquals(1,browser.getHits());
+        } finally {
+            tester.removeMonitor(browser);
+            tester.runOnMainSync(activity::finish);
+        }
+    }
     @Test public void configuredProbeDeadlineInterruptsStalledTls() throws Exception {
         // A local peer accepts TCP but never answers ClientHello. No outside service is used.
         try(java.net.ServerSocket server=new java.net.ServerSocket(0,1,java.net.InetAddress.getByName("127.0.0.1"))) {

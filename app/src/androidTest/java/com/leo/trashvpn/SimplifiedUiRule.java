@@ -3,13 +3,13 @@ package com.leo.trashvpn;
 import android.content.Context;
 import android.content.SharedPreferences;
 import androidx.test.platform.app.InstrumentationRegistry;
-import org.junit.rules.ExternalResource;
 
 /** Keeps Chinese-label workflow fixtures independent of the tester's phone language. */
-final class SimplifiedUiRule extends ExternalResource {
+final class SimplifiedUiRule extends OfflineStartupRule {
     private SharedPreferences prefs;
     private String original;
     @Override protected void before() {
+        super.before();
         Context context=InstrumentationRegistry.getInstrumentation().getTargetContext();
         prefs=context.getSharedPreferences(NetworkSettings.PREFS,Context.MODE_PRIVATE);
         original=prefs.getString(AppLanguage.PREF,null);
@@ -17,5 +17,6 @@ final class SimplifiedUiRule extends ExternalResource {
     }
     @Override protected void after() {
         prefs.edit().putString(AppLanguage.PREF,original).commit();
+        super.after();
     }
 }

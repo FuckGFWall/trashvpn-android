@@ -11,6 +11,32 @@ import static org.junit.Assert.*;
 
 @RunWith(AndroidJUnit4.class)
 public class SelectionCacheDeviceTest {
+    @Test public void exportMergesAllLevelsAndKeepsOnlyFreshNodesOfTheSelectedProtocol() throws Exception {
+        Context base=InstrumentationRegistry.getInstrumentation().getTargetContext();
+        SharedPreferences fixtures=base.getSharedPreferences("qa-selection-export",Context.MODE_PRIVATE);
+        fixtures.edit().clear().commit();
+        Context ctx=new ContextWrapper(base) {
+            @Override public SharedPreferences getSharedPreferences(String name,int mode) { return fixtures; }
+        };
+        WarpProfile.Protocol wg=WarpProfile.Protocol.WG, awg=WarpProfile.Protocol.AWG;
+        String low=wg.endpoints.get(0),medium=wg.endpoints.get(1),high=wg.endpoints.get(2),expired=wg.endpoints.get(3);
+        long now=System.currentTimeMillis();
+        new SelectionCache(ctx,wg,ScanIntensity.LOW).save(Arrays.asList(new NodeSelection.Score(low,1,1,75,now),
+                new NodeSelection.Score(expired,1,1,5,now-NodeSelection.TTL)));
+        new SelectionCache(ctx,wg,ScanIntensity.MEDIUM).save(Collections.singletonList(new NodeSelection.Score(medium,2,2,200,now)));
+        new SelectionCache(ctx,wg,ScanIntensity.HIGH).save(Arrays.asList(new NodeSelection.Score(high,3,3,100,now),
+                new NodeSelection.Score(low,3,3,50,now)));
+        new SelectionCache(ctx,awg,ScanIntensity.LOW).save(Collections.singletonList(new NodeSelection.Score(low,1,1,88,now)));
+        List<NodeSelection.Score> exported=SelectionCache.loadAll(ctx,wg);
+        assertEquals(3,exported.size());
+        assertEquals(low,exported.get(0).endpoint);
+        assertEquals(50,exported.get(0).ms);
+        assertEquals(high,exported.get(1).endpoint);
+        assertEquals(medium,exported.get(2).endpoint);
+        assertEquals(1,SelectionCache.loadAll(ctx,awg).size());
+        assertTrue(SelectionCache.loadAll(ctx,WarpProfile.Protocol.MASQUE).isEmpty());
+    }
+
     @Test public void legacyScoresBelongToMediumOnlyAndHighScoresRemainIndependent() throws Exception {
         Context base = InstrumentationRegistry.getInstrumentation().getTargetContext();
         SharedPreferences fixtures = base.getSharedPreferences("qa-selection-intensity", Context.MODE_PRIVATE);

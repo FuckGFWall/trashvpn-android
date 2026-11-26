@@ -52,7 +52,7 @@ final class SettingsAbout {
         about.addView(row(activity.getString(R.string.version),null,0,null,version(),false,null));
         divider(about,14);
         about.addView(row(activity.getString(R.string.connection_diagnostics),PULSE,style.tint,NEXT,null,false,()->
-                activity.startActivity(new Intent(activity,ConnectionDiagnosticsActivity.class))));
+                ConnectionDiagnosticsActivity.open(activity)));
 
         String donateLabel=activity.getString(R.string.donate);
         LinearLayout donate=section(parent,donateLabel,0xffcc3506);
@@ -65,7 +65,7 @@ final class SettingsAbout {
     }
 
     private LinearLayout section(LinearLayout parent,String title,int background) {
-        TextView label=text(title,14,style.muted,false);
+        TextView label=text(title,12,style.muted,false);
         label.setPaddingRelative(dp(14),0,0,dp(7));
         LinearLayout.LayoutParams header=new LinearLayout.LayoutParams(-1,-2);
         header.topMargin=dp(20);
@@ -97,9 +97,9 @@ final class SettingsAbout {
             iconSize.setMarginEnd(dp(13));
             row.addView(badge,iconSize);
         }
-        row.addView(text(name,16,emphasized?Color.WHITE:style.text,emphasized),
+        row.addView(text(name,14,emphasized?Color.WHITE:style.text,emphasized),
                 new LinearLayout.LayoutParams(0,-2,1));
-        if(detail!=null) row.addView(text(detail,15,style.muted,false));
+        if(detail!=null) row.addView(text(detail,13,style.muted,false));
         if(arrow!=null) row.addView(new HomeStyle.Symbol(activity,arrow,style,emphasized?Color.WHITE:style.muted),
                 dp(20),dp(20));
         if(onClick!=null) {

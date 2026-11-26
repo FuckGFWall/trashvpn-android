@@ -47,32 +47,37 @@ public final class WarpVpnService extends VpnService {
         final ScanService.Job retryScan;
         final ExitLocation location;
         final ActiveNode node;
+        final Network network;
 
         Status(Stage stage,int title,int detail) {
             this(stage,title,detail,null);
         }
 
         Status(Stage stage,int title,int detail,ScanService.Job retryScan) {
-            this(stage,new UiText(title),detail,retryScan,ExitLocation.UNKNOWN,null);
+            this(stage,new UiText(title),detail,retryScan,ExitLocation.UNKNOWN,null,null);
         }
 
-        private Status(Stage stage,UiText title,int detail,ScanService.Job retryScan,ExitLocation location,ActiveNode node) {
+        private Status(Stage stage,UiText title,int detail,ScanService.Job retryScan,ExitLocation location,ActiveNode node,Network network) {
             this.stage = stage;
             this.title = title;
             this.detail = new UiText(detail);
             this.retryScan = retryScan;
             this.location = location;
             this.node = node;
+            this.network=network;
         }
 
         static Status connected(ExitLocation location,ActiveNode node) {
-            return new Status(Stage.CONNECTED,new UiText(R.string.connected),R.string.vpn_verified,null,location,node);
+            return connected(location,node,null);
+        }
+        static Status connected(ExitLocation location,ActiveNode node,Network network) {
+            return new Status(Stage.CONNECTED,new UiText(R.string.connected),R.string.vpn_verified,null,location,node,network);
         }
         Status switchingNode() {
-            return new Status(Stage.SWITCHING,new UiText(R.string.switching_node),R.string.checking_target,null,location,node);
+            return new Status(Stage.SWITCHING,new UiText(R.string.switching_node),R.string.checking_target,null,location,node,network);
         }
         Status switchRejected() {
-            return new Status(Stage.CONNECTED,new UiText(R.string.connected),R.string.switch_rejected,null,location,node);
+            return new Status(Stage.CONNECTED,new UiText(R.string.connected),R.string.switch_rejected,null,location,node,network);
         }
 
         boolean busy() {
@@ -116,6 +121,7 @@ public final class WarpVpnService extends VpnService {
 
     private static void publish(Status next) {
         status = next;
+        UpdateChecker.vpnChanged(next.stage==Stage.CONNECTED?next.network:null);
         for (Observer observer : new ArrayList<>(observers)) observer.changed(next);
     }
 
@@ -162,16 +168,6 @@ public final class WarpVpnService extends VpnService {
         String endpoint = fixed != null ? fixed : candidate < 0 ? null : protocol.endpoints.get(candidate);
         DiagnosticLog.info(this,CONNECTION,"Starting "+protocol+" / "+(endpoint==null?"auto":endpoint));
         Status starting=new Status(Stage.STARTING,R.string.vpn_starting,R.string.vpn_prepare);
-        try {
-            startForeground(NOTIFICATION, notification(starting));
-            foreground=this;
-        } catch (RuntimeException e) {
-            active = false;
-            DiagnosticLog.warn(this,CONNECTION,"Foreground VPN start blocked · "+e.getClass().getSimpleName());
-            publish(new Status(Stage.FAILED,R.string.vpn_start_failed,R.string.vpn_launch_blocked));
-            stopSelf(startId);
-            return START_NOT_STICKY;
-        }
         publish(starting);
         ScanIntensity level = ScanIntensity.parse(intent.getStringExtra(INTENSITY));
         worker.execute(() -> connect(protocol, endpoint, level,
@@ -245,7 +241,7 @@ public final class WarpVpnService extends VpnService {
 
     private boolean establishAndCheck(WarpProfile.Protocol p,String ep,TunnelIdentity id,UiText step,boolean automatic) throws Exception {
         checkCancel();
-        progress(new Status(Stage.VERIFYING,step,R.string.vpn_verify_exit,null,ExitLocation.UNKNOWN,null));
+        progress(new Status(Stage.VERIFYING,step,R.string.vpn_verify_exit,null,ExitLocation.UNKNOWN,null,null));
         openTunnel(p, ep, id);
         WarpProbe.Result r = trace();
         if (r == null) { Thread.sleep(400); r = trace(); }
@@ -254,7 +250,7 @@ public final class WarpVpnService extends VpnService {
         DiagnosticLog.info(this,CONNECTION, "PASS " + p + " " + ep + " warp=" + marker + " " + r.elapsedMs + "ms");
         selectedEndpoint=ep;
         selectedLocation=r.location;
-        progress(Status.connected(r.location,new ActiveNode(p,ep,automatic)));
+        progress(Status.connected(r.location,new ActiveNode(p,ep,automatic),r.verifiedNetwork));
         return true;
     }
 
@@ -340,7 +336,7 @@ public final class WarpVpnService extends VpnService {
                     catch(Exception e) { DiagnosticLog.warn(this,CONNECTION,"Old streams could not be closed"); }
                 }
                 DiagnosticLog.info(this,CONNECTION,"HOT_SWITCH "+p+" "+previous+" -> "+verified);
-                Status updated=Status.connected(selectedLocation,new ActiveNode(p,verified,target==null));
+                Status updated=Status.connected(selectedLocation,new ActiveNode(p,verified,target==null),original.network);
                 main.post(()->{
                     if(!active || cancel.get()) return;
                     getSharedPreferences(NetworkSettings.PREFS,MODE_PRIVATE).edit()
@@ -367,13 +363,24 @@ public final class WarpVpnService extends VpnService {
     private void progress(Status next) {
         main.post(() -> {
             if (!active || cancel.get()) return;
+            if(next.stage==Stage.CONNECTED && foreground!=this) {
+                try {
+                    // Started as a regular service from the visible activity; only a verified tunnel stays foreground.
+                    startForeground(NOTIFICATION,notification(next));
+                    foreground=this;
+                } catch(RuntimeException e) {
+                    DiagnosticLog.warn(this,CONNECTION,"Foreground VPN start blocked · "+e.getClass().getSimpleName());
+                    requestStop(new Status(Stage.FAILED,R.string.vpn_start_failed,R.string.vpn_launch_blocked));
+                    return;
+                }
+            }
             publish(next);
-            getSystemService(NotificationManager.class).notify(NOTIFICATION, notification(next));
         });
     }
 
     private void refreshNotification() {
-        getSystemService(NotificationManager.class).notify(NOTIFICATION,notification(status));
+        if(status.stage==Stage.CONNECTED || status.stage==Stage.SWITCHING)
+            getSystemService(NotificationManager.class).notify(NOTIFICATION,notification(status));
     }
 
     private PendingIntent openApp() {
@@ -412,7 +419,9 @@ public final class WarpVpnService extends VpnService {
         }
     }
 
-    private void requestStop() {
+    private void requestStop() { requestStop(idle()); }
+
+    private void requestStop(Status terminal) {
         if (!active) {
             stopSelf();
             return;
@@ -426,7 +435,7 @@ public final class WarpVpnService extends VpnService {
             main.post(() -> {
                 if (active) {
                     DiagnosticLog.info(this,CONNECTION, "STOPPED");
-                    end(idle());
+                    end(terminal);
                 }
             });
         });

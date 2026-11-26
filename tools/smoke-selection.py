@@ -1,4 +1,4 @@
-"""LG/ADB acceptance check for the Android selection UI. Does NOT register a device."""
+"""LG/ADB selection check. Use a test device with both WARP identities already registered."""
 import argparse
 import re
 import subprocess

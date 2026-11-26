@@ -11,6 +11,7 @@ import android.view.View;
 import androidx.test.ext.junit.runners.AndroidJUnit4;
 import androidx.test.platform.app.InstrumentationRegistry;
 import org.junit.Test;
+import org.junit.Rule;
 import org.junit.runner.RunWith;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
@@ -18,6 +19,7 @@ import static org.junit.Assert.*;
 
 @RunWith(AndroidJUnit4.class)
 public class LocalizationDeviceTest {
+    @Rule public final OfflineStartupRule offline=new OfflineStartupRule();
     @Test public void changingLanguageReopensSettingsInTheNewLayoutDirection() throws Exception {
         Instrumentation tester=InstrumentationRegistry.getInstrumentation();
         Context context=tester.getTargetContext();

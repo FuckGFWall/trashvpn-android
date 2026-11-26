@@ -1,5 +1,6 @@
 <resources>
     <string name="app_name" translatable="false">TrashVPN</string>
+    <item name="ic_launcher" type="mipmap">@mipmap/ic_recents</item>
     <string name="settings_dropdown" translatable="false">%1$s  ▾</string>
     <string name="node_latency" translatable="false">%1$d ms</string>
     <string name="exit_location_unknown" translatable="false">—</string>
@@ -7,6 +8,11 @@
     <item type="id" name="settings_page"/>
     <item type="id" name="settings_intensity"/>
     <item type="id" name="settings_language"/>
+    <item type="id" name="settings_update"/>
+    <item type="id" name="settings_node_export"/>
+    <item type="id" name="settings_node_export_format"/>
+    <item type="id" name="settings_node_export_copy"/>
+    <item type="id" name="settings_node_export_count"/>
     <item type="id" name="settings_auto_connect"/>
     <item type="id" name="settings_timeout"/>
     <item type="id" name="settings_mtu"/>

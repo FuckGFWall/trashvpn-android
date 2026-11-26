@@ -4,15 +4,19 @@ import android.animation.Animator;
 import android.animation.AnimatorListenerAdapter;
 import android.animation.ValueAnimator;
 import android.app.Activity;
-import android.app.AlertDialog;
+import android.app.ActivityManager;
+import android.app.NotificationManager;
+import android.content.ActivityNotFoundException;
 import android.content.Intent;
 import android.content.Context;
 import android.content.SharedPreferences;
 import android.content.res.Configuration;
 import android.content.res.ColorStateList;
+import android.content.pm.PackageManager;
 import android.text.InputType;
 import android.view.inputmethod.EditorInfo;
 import android.view.inputmethod.InputMethodManager;
+import android.graphics.BitmapFactory;
 import android.graphics.Typeface;
 import android.graphics.Rect;
 import android.net.Uri;
@@ -23,8 +27,6 @@ import android.view.ContextThemeWrapper;
 import android.view.Gravity;
 import android.view.MotionEvent;
 import android.view.View;
-import android.view.WindowInsets;
-import android.view.WindowInsetsController;
 import android.view.animation.DecelerateInterpolator;
 import android.widget.FrameLayout;
 import android.widget.LinearLayout;
@@ -43,9 +45,12 @@ import java.util.Locale;
 import static com.leo.trashvpn.R.string.*;
 
 public final class MainActivity extends Activity {
-    private static final int VPN_PERMISSION=10;
+    private static final int VPN_PERMISSION=10, CONNECTED_NOTIFICATIONS=11;
     private static final int NODE_NAME_SP=16;
     private final WarpVpnService.Observer observer=this::onVpnStatus;
+    private final CacheBootstrap bootstrap=new CacheBootstrap();
+    private final Runnable updateObserver=this::refreshUpdateNotice;
+    private UpdateChecker updates;
     private SharedPreferences prefs;
     private final List<Draft> saveDrafts=new ArrayList<>();
     private final List<View> idleSettings=new ArrayList<>();
@@ -68,6 +73,8 @@ public final class MainActivity extends Activity {
     private HomeStyle.Track track;
     private TextView progressTitle, progressDetail, scanAction, protocolText, stageLeft, stageRight;
     private TextView delayAction;
+    private TextView updateNotice;
+    private NodeExportSettings nodeExportSettings;
     private LinearLayout localMetadata, exitMetadata;
     private TextView exitCountry, exitDataCenter;
     private List<String> nodeEntries=new ArrayList<>();
@@ -86,6 +93,7 @@ public final class MainActivity extends Activity {
     @Override public void onCreate(Bundle saved) {
         super.onCreate(saved);
         prefs=getSharedPreferences(NetworkSettings.PREFS,MODE_PRIVATE);
+        updates=UpdateChecker.get(this);
         if (saved!=null) {
             settings=saved.getBoolean("settings");
             pendingProtocol=parseProtocol(saved.getString("pending"),null);
@@ -96,8 +104,15 @@ public final class MainActivity extends Activity {
             if(switching!=null) handoff=ProtocolHandoff.valueOf(switching);
             scanAttempted=saved.getBoolean("scanAttempted");
             homeHint=saved.getInt("homeHint");
+            bootstrap.restore(saved.getStringArrayList("bootstrap"));
         }
         build();
+        setRecentsIcon();
+    }
+    @SuppressWarnings("deprecation") // Some system launchers only read the task's bitmap, not its icon resource.
+    private void setRecentsIcon() {
+        setTaskDescription(new ActivityManager.TaskDescription(getString(R.string.app_name),
+                BitmapFactory.decodeResource(getResources(),R.mipmap.ic_recents),0));
     }
     @Override public void onConfigurationChanged(Configuration config) {
         super.onConfigurationChanged(config);
@@ -110,10 +125,12 @@ public final class MainActivity extends Activity {
         ScanService.observer=this::consume;
         EnrollmentTask.observer=this::consume;
         NodeDiagnostics.observer=this::refresh;
+        updates.observe(updateObserver);
     }
     @Override protected void onResume() {
         super.onResume();
         visible=true;
+        updates.onForeground(connected()?vpn.network:null);
         consume();
     }
     @Override protected void onPause() {
@@ -126,6 +143,7 @@ public final class MainActivity extends Activity {
         EnrollmentTask.observer=null;
         NodeDiagnostics.observer=null;
         WarpVpnService.unobserve(observer);
+        updates.unobserve(updateObserver);
         super.onStop();
     }
     @Override protected void onDestroy() {
@@ -143,6 +161,7 @@ public final class MainActivity extends Activity {
         if(handoff!=null) out.putString("handoff",handoff.name());
         out.putBoolean("scanAttempted",scanAttempted);
         out.putInt("homeHint",homeHint);
+        out.putStringArrayList("bootstrap",bootstrap.save());
     }
     @android.annotation.SuppressLint("GestureBackNavigation") // API 33+ uses the dispatcher below.
     @Override public void onBackPressed() {
@@ -252,7 +271,7 @@ public final class MainActivity extends Activity {
             if(!settings) {
                 pages.removeView(settingsPage); settingsPage=null; settingsForm=null;
                 saveDrafts.clear(); idleSettings.clear();
-                protocolControl=null; dnsInput=null; dnsLeak=null;
+                protocolControl=null; dnsInput=null; dnsLeak=null; updateNotice=null; nodeExportSettings=null;
             }
         }
     }
@@ -274,28 +293,12 @@ public final class MainActivity extends Activity {
         if(pages!=null) settlePages();
         updateBack(settings);
         style=new HomeStyle(this,prefs.getString(HomeStyle.THEME_PREF,HomeStyle.DEFAULT_THEME));
-        getWindow().setStatusBarColor(style.background);
-        getWindow().setNavigationBarColor(style.background);
-        if(Build.VERSION.SDK_INT>=29) getWindow().setNavigationBarContrastEnforced(false);
-        if(Build.VERSION.SDK_INT>=30) {
-            getWindow().setDecorFitsSystemWindows(false);
-            WindowInsetsController c=getWindow().getInsetsController();
-            if(c!=null) {
-                int flags=WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS|WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS;
-                c.setSystemBarsAppearance(style.dark?0:flags,flags);
-            }
-        } else getWindow().getDecorView().setSystemUiVisibility(style.dark?0:View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR|View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR);
 
         pages=new FrameLayout(this) {
             @Override public boolean onInterceptTouchEvent(MotionEvent event) { return sliding; }
         };
         pages.setLayoutDirection(getResources().getConfiguration().getLayoutDirection());
         pages.setBackgroundColor(style.background);
-        if(Build.VERSION.SDK_INT>=30) pages.setOnApplyWindowInsetsListener((v,insets)->{
-            android.graphics.Insets sys=insets.getInsets(WindowInsets.Type.systemBars()|WindowInsets.Type.displayCutout());
-            v.setPadding(sys.left,sys.top,sys.right,sys.bottom);
-            return insets;
-        });
         homePage=makePage(false);
         pages.addView(homePage,new FrameLayout.LayoutParams(-1,-1));
         settingsPage=null;
@@ -304,8 +307,7 @@ public final class MainActivity extends Activity {
             pages.addView(settingsPage,new FrameLayout.LayoutParams(-1,-1));
         }
         settlePages();
-        setContentView(pages);
-        pages.requestApplyInsets();
+        SystemBars.setContent(this,pages,style);
         refresh();
     }
 
@@ -319,7 +321,7 @@ public final class MainActivity extends Activity {
             HomeStyle.Symbol back=icon(HomeStyle.Symbol.Kind.BACK,s(go_home),()->page(false));
             header.addView(back,dp(42),dp(48));
         }
-        TextView brand=text(settingsPage?s(R.string.settings):getString(R.string.app_name),settingsPage?23:21,style.text,true);
+        TextView brand=text(settingsPage?s(R.string.settings):getString(R.string.app_name),21,style.text,true);
         header.addView(brand,new LinearLayout.LayoutParams(0,-2,1));
         if(!settingsPage) {
             settingsGear=icon(HomeStyle.Symbol.Kind.GEAR,s(R.string.settings),()->page(true));
@@ -582,6 +584,18 @@ public final class MainActivity extends Activity {
         settingsForm.setFocusableInTouchMode(true);
         settingsForm.requestFocus();
 
+        updateNotice=text("",14,style.orange,true);
+        updateNotice.setId(R.id.settings_update);
+        updateNotice.setVisibility(View.GONE);
+        updateNotice.setMinimumHeight(dp(48));
+        updateNotice.setGravity(Gravity.CENTER_VERTICAL);
+        updateNotice.setPaddingRelative(dp(17),dp(10),dp(17),dp(10));
+        updateNotice.setBackground(HomeStyle.shape(style.selected,dp(14)));
+        updateNotice.setAccessibilityLiveRegion(View.ACCESSIBILITY_LIVE_REGION_POLITE);
+        updateNotice.setOnClickListener(v->openDownload());
+        add(settingsForm,updateNotice,0);
+        refreshUpdateNotice();
+
         LinearLayout protocols=group(s(connection_protocol),0);
         protocolControl=dropdown(protocols,s(tunnel_protocol),protocol().ordinal(),new String[]{"AWG","WireGuard","MASQUE"},
                 i->switchProtocol(WarpProfile.Protocol.values()[i]));
@@ -601,12 +615,12 @@ public final class MainActivity extends Activity {
         languageMenu.setId(R.id.settings_language);
 
         LinearLayout selection=group(s(R.string.selection),14);
-        add(selection,text(s(intensity),16,style.text,false),12);
+        add(selection,text(s(intensity),14,style.text,false),12);
         ScanIntensity[] intensities=ScanIntensity.values();
         TextView[] tickLabels=new TextView[intensities.length];
-        TextView description=text("",13,style.muted,false);
+        TextView description=text("",12,style.muted,false);
         for(int i=0;i<tickLabels.length;i++) {
-            TextView t=text(s(intensities[i].label),14,style.muted,false);
+            TextView t=text(s(intensities[i].label),12,style.muted,false);
             t.setGravity(i==0?Gravity.START:i==tickLabels.length-1?Gravity.END:Gravity.CENTER);
             t.setPadding(dp(12),dp(6),dp(12),dp(6));
             tickLabels[i]=t;
@@ -649,7 +663,7 @@ public final class MainActivity extends Activity {
         LinearLayout network=group(s(R.string.network),14);
         idleSettings.add(edit(network,"MTU","","",Integer.toString(config.mtu),true,value->
                 prefs.edit().putInt(NetworkSettings.MTU,NetworkSettings.mtu(value)).apply()));
-        add(network,text(s(auto_mtu_hint),13,style.muted,false),7);
+        add(network,text(s(auto_mtu_hint),12,style.muted,false),7);
 
         LinearLayout dns=group("DNS",14);
         EditText custom=edit(dns,s(custom_dns),"",s(default_dns_hint),config.customDns,false,
@@ -659,7 +673,7 @@ public final class MainActivity extends Activity {
         leak.setOnCheckedChangeListener((button,checked)->prefs.edit().putBoolean(NetworkSettings.PROTECT,checked).apply());
         Switch noDns=toggle(dns,s(no_tunnel_dns),config.noDns);
         idleSettings.add(noDns);
-        TextView dnsHint=text(s(no_tunnel_dns_hint),13,style.muted,false);
+        TextView dnsHint=text(s(no_tunnel_dns_hint),12,style.muted,false);
         dnsHint.setVisibility(config.noDns?View.VISIBLE:View.GONE);
         add(dns,dnsHint,6);
         noDns.setOnCheckedChangeListener((button, checked)->{
@@ -668,7 +682,23 @@ public final class MainActivity extends Activity {
             updateSettingsControls(locked());
             dnsHint.setVisibility(checked?View.VISIBLE:View.GONE);
         });
+        nodeExportSettings=new NodeExportSettings(this,settingsForm,style,protocol());
         SettingsAbout.add(this,settingsForm,style);
+    }
+    private void refreshUpdateNotice() { showAvailableUpdate(updates.availableTag()); }
+    void showAvailableUpdate(String tag) {
+        if(updateNotice==null || !settings) return;
+        updateNotice.setVisibility(tag==null?View.GONE:View.VISIBLE);
+        if(tag!=null) updateNotice.setText(getString(update_available,tag));
+        LinearLayout.LayoutParams space=(LinearLayout.LayoutParams)updateNotice.getLayoutParams();
+        space.bottomMargin=tag==null?0:dp(14);
+        updateNotice.setLayoutParams(space);
+    }
+    private void openDownload() {
+        try {
+            startActivity(new Intent(Intent.ACTION_VIEW,Uri.parse(UpdateChecker.DOWNLOAD))
+                    .addCategory(Intent.CATEGORY_BROWSABLE));
+        } catch(ActivityNotFoundException e) { toast(s(no_link_app)); }
     }
     void setLanguage(AppLanguage requested) {
         String tag=requested.locale.toLanguageTag();
@@ -678,12 +708,12 @@ public final class MainActivity extends Activity {
         prefs.edit().putString(AppLanguage.PREF,tag).apply();
         if(changed) {
             WarpVpnService.refreshNotificationLanguage();
-            ScanService.refreshNotificationLanguage();
             recreate();
         }
     }
     private void updateSettingsControls(boolean busy) {
         if(!settings || protocolControl==null) return;
+        if(nodeExportSettings!=null) nodeExportSettings.refresh(protocol());
         protocolControl.setEnabled(!registering() && pendingProtocol==null);
         protocolControl.setAlpha(protocolControl.isEnabled()?1f:.45f);
         for(View control:idleSettings) control.setEnabled(!busy);
@@ -694,7 +724,7 @@ public final class MainActivity extends Activity {
 
     private LinearLayout group(String title,int gap) {
         LinearLayout card=card(17);
-        add(card,text(title,18,style.text,true),0);
+        add(card,text(title,16,style.text,true),0);
         add(settingsForm,card,gap);
         return card;
     }
@@ -705,8 +735,8 @@ public final class MainActivity extends Activity {
         line.setPadding(dp(12),dp(10),dp(12),dp(10));
         line.setMinimumHeight(dp(48));
         line.setBackground(HomeStyle.shape(style.tile,dp(12)));
-        line.addView(text(title,16,style.text,false),new LinearLayout.LayoutParams(0,-2,1));
-        TextView value=text(getString(R.string.settings_dropdown,choices[current]),15,style.orange,false);
+        line.addView(text(title,14,style.text,false),new LinearLayout.LayoutParams(0,-2,1));
+        TextView value=text(getString(R.string.settings_dropdown,choices[current]),13,style.orange,false);
         line.addView(value);
         final int[] index={current};
         line.setOnClickListener(v->{
@@ -748,7 +778,7 @@ public final class MainActivity extends Activity {
     private EditText edit(LinearLayout parent,String title,String unit,String hint,String value,boolean number,
                           java.util.function.Consumer<String> save) {
         LinearLayout line=number?row():column();
-        TextView label=text(title,16,style.text,false);
+        TextView label=text(title,14,style.text,false);
         EditText input=new EditText(this);
         int id = !number ? R.id.settings_dns : unit.isEmpty() ? R.id.settings_mtu : R.id.settings_timeout;
         input.setId(id);
@@ -757,7 +787,7 @@ public final class MainActivity extends Activity {
         input.setSingleLine(true);
         input.setInputType(number?InputType.TYPE_CLASS_NUMBER:InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_VARIATION_URI);
         input.setImeOptions(EditorInfo.IME_ACTION_DONE);
-        input.setTextSize(15);
+        input.setTextSize(13);
         input.setTextColor(style.text);
         input.setHintTextColor(style.muted);
         input.setHint(hint);
@@ -781,7 +811,7 @@ public final class MainActivity extends Activity {
             line.addView(label,new LinearLayout.LayoutParams(0,-2,1));
             line.addView(input,new LinearLayout.LayoutParams(dp(90),-2));
             if(!unit.isEmpty()) {
-                TextView suffix=text(unit,14,style.muted,false);
+                TextView suffix=text(unit,12,style.muted,false);
                 suffix.setPaddingRelative(dp(8),0,0,0);
                 line.addView(suffix);
             }
@@ -794,7 +824,7 @@ public final class MainActivity extends Activity {
         Switch control=new Switch(new ContextThemeWrapper(this,style.dark?R.style.AppTheme:R.style.AppThemeLight));
         control.setText(title);
         control.setTextColor(style.text);
-        control.setTextSize(15);
+        control.setTextSize(13);
         control.setChecked(checked);
         control.setMinimumHeight(dp(46));
         control.setThumbTintList(new ColorStateList(new int[][]{
@@ -803,10 +833,6 @@ public final class MainActivity extends Activity {
         add(parent,control,5);
         return control;
     }
-    private AlertDialog.Builder dialog() {
-        return new AlertDialog.Builder(new ContextThemeWrapper(this,style.dark?R.style.AppTheme:R.style.AppThemeLight));
-    }
-
     private void refresh() {
         if(power==null) return;
         boolean register=registering(), scan=scanning(), blocked=locked();
@@ -826,35 +852,46 @@ public final class MainActivity extends Activity {
         String title=connected?s(R.string.connected):s(disconnected), detail="";
         int percent=ready?100:enrolled?HomeStyle.Track.REGISTRATION:0;
         String badge=scanAttempted||!cached.isEmpty()?s(scan_again):s(scan_action);
+        HomeStyle.Track.Running running=HomeStyle.Track.Running.NONE;
         if(handoff!=null) {
             title=s(switching_protocol);
             detail=pretty(chosen);
         } else if(register) {
             EnrollmentTask t=EnrollmentTask.current;
-            title=getString(step_format,t.step,s(t.title)); detail=s(registering);
-            percent=3+(t.step-1)*9;
+            title=getString(preparation_step_format,t.step.ordinal()+1,WarpRegistration.Step.values().length,
+                    s(t.step.label),s(t.title));
+            detail=s(registering);
+            percent=3+t.step.ordinal()*9;
+            running=HomeStyle.Track.Running.REGISTER;
         } else if(scan) {
             ScanService.Job j=ScanService.current;
-            title=getString(step_format,j.step,s(j.title));
+            title=selectionTitle(j.step,j.title);
             detail=j.detail.get(this);
             percent=HomeStyle.Track.REGISTRATION+(100-HomeStyle.Track.REGISTRATION)*j.percent/100;
             badge=j.cancel.get()?s(pausing):s(pause);
+            if(!j.cancel.get()) running=HomeStyle.Track.Running.SELECT;
         } else if(connecting||stopping||switchingNode()) {
             title=launching?s(vpn_starting):vpn.title.get(this);
             detail=launching?"":vpn.detail.get(this);
         } else if(homeHint!=0 && !connected) {
-            title=s(homeHint);
+            title=homeHint==scan_finished || homeHint==scan_no_nodes
+                    ? selectionTitle(LocalSelection.Step.SUMMARY,homeHint) : s(homeHint);
         }
         scanAction.setText(badge);
         progressTitle.setText(title);
         progressDetail.setText(detail);
         progressDetail.setVisibility(detail.isEmpty()?View.GONE:View.VISIBLE);
-        track.update(percent,enrolled,ready);
+        track.update(percent,enrolled,ready,running);
         stageLeft.setTextColor(ready?style.readyText:register||enrolled?style.orange:style.muted);
         stageRight.setTextColor(ready?style.readyText:style.muted);
         showMetadata(chosen,connected?vpn.location:null);
         renderNodes(!canPickNode(),cached);
         updateSettingsControls(blocked);
+    }
+
+    private String selectionTitle(LocalSelection.Step step,int title) {
+        return getString(preparation_step_format,step.ordinal()+1,LocalSelection.Step.values().length,
+                s(step.label),s(title));
     }
 
     private void powerPressed() {
@@ -884,13 +921,25 @@ public final class MainActivity extends Activity {
     private void scanPressed() {
         if(handoff!=null) return;
         if(scanning()) { ScanService.current.cancel.set(true); refresh(); return; }
-        if(!locked()) perform(EnrollmentTask.Action.SCAN,null,protocol(),level());
+        if(!locked()) {
+            perform(EnrollmentTask.Action.SCAN,null,protocol(),level());
+        }
     }
     private boolean autoConnect() { return prefs.getBoolean(NetworkSettings.AUTO_CONNECT,false); }
+    private void bootstrapMissingCache() {
+        if(!visible || locked() || CacheBootstrap.suspendedForInstrumentation) return;
+        WarpProfile.Protocol protocol=protocol();
+        ScanIntensity level=level();
+        boolean registered=registered(protocol);
+        boolean cached=registered && !new SelectionCache(this,protocol,level).load().isEmpty();
+        if(bootstrap.claim(protocol,level,cached)) perform(EnrollmentTask.Action.SCAN,null,protocol,level);
+    }
+
     private void perform(EnrollmentTask.Action action,String endpoint,WarpProfile.Protocol p,ScanIntensity l) {
         homeHint=0;
         if(!registered(p)) {
-            confirmRegistration(action,endpoint,p,l);
+            bootstrap.mark(p,l);
+            EnrollmentTask.start(this,new EnrollmentTask(p==WarpProfile.Protocol.MASQUE,action,endpoint,p,l));
             return;
         }
         if(action==EnrollmentTask.Action.SCAN || (endpoint==null && new SelectionCache(this,p,l).load().isEmpty()))
@@ -898,6 +947,7 @@ public final class MainActivity extends Activity {
         else requestVpn(p,l,endpoint,endpoint==null);
     }
     private void startScan(ScanService.Job j) {
+        bootstrap.mark(j.protocol,j.level);
         ScanService.begin(this,j);
     }
     void onVpnStatus(WarpVpnService.Status state) {
@@ -915,12 +965,14 @@ public final class MainActivity extends Activity {
         if(visible) {
             EnrollmentTask task=EnrollmentTask.current;
             if(task!=null && task.done) {
+                bootstrap.mark(task.protocol,task.level);
                 EnrollmentTask.current=null;
                 if(task.error!=null) { homeHint=registration_failed; toast(task.error.get(this)); }
                 else perform(task.action,task.endpoint,task.protocol,task.level);
             }
             ScanService.Job j=ScanService.current;
             if(j!=null && j.done) {
+                bootstrap.mark(j.protocol,j.level);
                 ScanService.current=null;
                 boolean current=handoff==null && j.protocol==protocol() && j.level==level();
                 if(current) {
@@ -945,7 +997,25 @@ public final class MainActivity extends Activity {
                 if(next==ProtocolHandoff.Next.CONNECT) perform(EnrollmentTask.Action.CONNECT,fixed(),p,l);
             }
         }
+        bootstrapMissingCache();
         refresh();
+        maybeRequestConnectedNotifications();
+    }
+
+    private void maybeRequestConnectedNotifications() {
+        if(Build.VERSION.SDK_INT<33 || !visible || !connected() || vpn.network==null
+                || prefs.getBoolean("vpn-notification-requested",false)) return;
+        String permission=android.Manifest.permission.POST_NOTIFICATIONS;
+        if(checkSelfPermission(permission)==PackageManager.PERMISSION_GRANTED
+                || getSystemService(NotificationManager.class).areNotificationsEnabled()) return;
+        prefs.edit().putBoolean("vpn-notification-requested",true).apply();
+        requestPermissions(new String[]{permission},CONNECTED_NOTIFICATIONS);
+    }
+
+    @Override public void onRequestPermissionsResult(int request,String[] permissions,int[] results) {
+        super.onRequestPermissionsResult(request,permissions,results);
+        if(request==CONNECTED_NOTIFICATIONS && results.length>0 && results[0]==PackageManager.PERMISSION_GRANTED)
+            WarpVpnService.refreshNotificationLanguage();
     }
 
     private void requestVpn(WarpProfile.Protocol p,ScanIntensity l,String endpoint,boolean retry) {
@@ -964,19 +1034,9 @@ public final class MainActivity extends Activity {
                 .putExtra(WarpVpnService.FIXED_ENDPOINT,pendingFixed)
                 .putExtra(WarpVpnService.SCAN_IF_STALE,pendingStale);
         pendingProtocol=null; launching=true; homeHint=0;
-        try { startForegroundService(intent); }
+        try { startService(intent); }
         catch(RuntimeException e) { launching=false; homeHint=vpn_launch_blocked; }
         refresh();
-    }
-    private void confirmRegistration(EnrollmentTask.Action action,String endpoint,WarpProfile.Protocol p,ScanIntensity l) {
-        boolean masque=p==WarpProfile.Protocol.MASQUE;
-        dialog().setTitle(masque?s(register_masque):s(register_wg))
-                .setMessage(s(registration_terms))
-                .setNegativeButton(s(cancel),null)
-                .setNeutralButton(s(read_terms),(d,w)->startActivity(new Intent(Intent.ACTION_VIEW,Uri.parse("https://www.cloudflare.com/application/terms/"))))
-                .setPositiveButton(s(agree_continue),(d,w)->{
-                    EnrollmentTask.start(this,new EnrollmentTask(masque,action,endpoint,p,l));
-                }).show();
     }
     @Override protected void onActivityResult(int request,int result,Intent data) {
         super.onActivityResult(request,result,data);

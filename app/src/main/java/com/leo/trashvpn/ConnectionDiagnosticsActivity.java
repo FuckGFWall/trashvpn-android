@@ -1,6 +1,7 @@
 package com.leo.trashvpn;
 
 import android.app.Activity;
+import android.app.ActivityOptions;
 import android.content.ActivityNotFoundException;
 import android.content.ClipData;
 import android.content.ClipboardManager;
@@ -13,8 +14,6 @@ import android.os.Bundle;
 import android.view.ContextThemeWrapper;
 import android.view.Gravity;
 import android.view.View;
-import android.view.WindowInsets;
-import android.view.WindowInsetsController;
 import android.widget.LinearLayout;
 import android.widget.PopupMenu;
 import android.widget.ScrollView;
@@ -42,12 +41,22 @@ public final class ConnectionDiagnosticsActivity extends Activity {
     private boolean started;
     private String displayed="", pendingExport;
 
+    static void open(Activity from) {
+        Intent open=new Intent(from,ConnectionDiagnosticsActivity.class);
+        if(Build.VERSION.SDK_INT>=34) from.startActivity(open);
+        else from.startActivity(open,ActivityOptions.makeCustomAnimation(from,R.anim.settings_enter,R.anim.settings_under_exit).toBundle());
+    }
+
     @Override protected void attachBaseContext(Context context) {
         super.attachBaseContext(AppLanguage.wrap(context));
     }
 
     @Override protected void onCreate(Bundle bundle) {
         super.onCreate(bundle);
+        if(Build.VERSION.SDK_INT>=34) {
+            overrideActivityTransition(OVERRIDE_TRANSITION_OPEN,R.anim.settings_enter,R.anim.settings_under_exit);
+            overrideActivityTransition(OVERRIDE_TRANSITION_CLOSE,R.anim.settings_under_enter,R.anim.settings_exit);
+        }
         if(bundle!=null) pendingExport=bundle.getString("export-text");
         String theme=getSharedPreferences(NetworkSettings.PREFS,MODE_PRIVATE)
                 .getString(HomeStyle.THEME_PREF,HomeStyle.DEFAULT_THEME);
@@ -57,21 +66,6 @@ public final class ConnectionDiagnosticsActivity extends Activity {
         page.setOrientation(LinearLayout.VERTICAL);
         page.setLayoutDirection(getResources().getConfiguration().getLayoutDirection());
         page.setBackgroundColor(style.background);
-        getWindow().setStatusBarColor(style.background);
-        getWindow().setNavigationBarColor(style.background);
-        if(Build.VERSION.SDK_INT>=29) getWindow().setNavigationBarContrastEnforced(false);
-        if(Build.VERSION.SDK_INT>=30) {
-            getWindow().setDecorFitsSystemWindows(false);
-            page.setOnApplyWindowInsetsListener((v,insets)->{
-                android.graphics.Insets sys=insets.getInsets(WindowInsets.Type.systemBars()|WindowInsets.Type.displayCutout());
-                v.setPadding(sys.left,sys.top,sys.right,sys.bottom);
-                return insets;
-            });
-            WindowInsetsController controller=getWindow().getInsetsController();
-            int flags=WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS|WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS;
-            if(controller!=null) controller.setSystemBarsAppearance(style.dark?0:flags,flags);
-        } else getWindow().getDecorView().setSystemUiVisibility(style.dark?0:
-                View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR|View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR);
 
         LinearLayout header=new LinearLayout(this);
         header.setGravity(Gravity.CENTER_VERTICAL);
@@ -81,7 +75,7 @@ public final class ConnectionDiagnosticsActivity extends Activity {
         header.addView(back,dp(42),dp(48));
         TextView title=new TextView(this);
         title.setText(R.string.connection_diagnostics);
-        title.setTextSize(22);
+        title.setTextSize(20);
         title.setTextColor(style.text);
         title.setTypeface(Typeface.DEFAULT,Typeface.BOLD);
         header.addView(title,new LinearLayout.LayoutParams(0,-2,1));
@@ -99,15 +93,19 @@ public final class ConnectionDiagnosticsActivity extends Activity {
         logView.setPadding(dp(13),dp(12),dp(13),dp(12));
         logView.setTypeface(Typeface.MONOSPACE);
         logView.setTextDirection(View.TEXT_DIRECTION_FIRST_STRONG_LTR);
-        logView.setTextSize(13);
+        logView.setTextSize(12);
         logView.setLineSpacing(dp(3),1f);
         showLog("");
         scroll.addView(logView);
         LinearLayout.LayoutParams logArea=new LinearLayout.LayoutParams(-1,0,1);
         logArea.setMargins(dp(20),dp(4),dp(20),dp(18));
         page.addView(scroll,logArea);
-        setContentView(page);
-        page.requestApplyInsets();
+        SystemBars.setContent(this,page,style);
+    }
+    @SuppressWarnings("deprecation") // Android 8–13 use the legacy transition API on finish.
+    @Override public void finish() {
+        super.finish();
+        if(Build.VERSION.SDK_INT<34) overridePendingTransition(R.anim.settings_under_enter,R.anim.settings_exit);
     }
 
     @Override protected void onStart() {

@@ -13,7 +13,16 @@ import javax.net.ssl.*;
 
 /** No VpnService or Android routes. Only the TLS probe enters the fixed-destination listener. */
 final class LocalSelection {
-    interface Progress { void show(int step,int title,UiText detail,int percent); }
+    enum Step {
+        PREPARE(R.string.scan_prepare),
+        SCREEN(R.string.scan_screen_stage),
+        VERIFY(R.string.scan_verify_stage),
+        SUMMARY(R.string.scan_summary_stage);
+
+        final int label;
+        Step(int label) { this.label=label; }
+    }
+    interface Progress { void show(Step step,int title,UiText detail,int percent); }
     private static final String HOST = "www.cloudflare.com";
     private static final ScheduledThreadPoolExecutor TIMER=new ScheduledThreadPoolExecutor(1,r->{
         Thread t=new Thread(r,"probe-deadline"); t.setDaemon(true); return t;
@@ -103,19 +112,26 @@ final class LocalSelection {
 
     private static final class ScanBudgetReached extends Exception {}
 
+    private static ScanJournal prepare(Context context,WarpProfile.Protocol p,ScanIntensity level,
+                                       List<NodeSelection.Score> current) throws Exception {
+        List<String> hints=new ArrayList<>();
+        for(NodeSelection.Score score:current) hints.add(score.endpoint);
+        for(ScanIntensity other:ScanIntensity.values()) if(level!=other)
+            for(NodeSelection.Score score:new SelectionCache(context,p,other).load()) hints.add(score.endpoint);
+        return ScanJournal.open(context,p,level,hints);
+    }
+
     static List<NodeSelection.Score> run(Context ctx, WarpProfile.Protocol p,
             ScanIntensity level, AtomicBoolean cancel, Progress ui) throws Exception {
+        ui.show(Step.PREPARE,R.string.scan_load_history,new UiText(R.string.scan_continue_background),5);
         TunnelIdentity id = WarpRegistration.identity(ctx,p);
         SelectionCache cache = new SelectionCache(ctx,p,level);
         NetworkSettings settings=NetworkSettings.load(ctx);
         long deadline=SystemClock.elapsedRealtime()+level.seconds*1000L;
         List<NodeSelection.Score> old = cache.load();
-        List<String> hints = new ArrayList<>();
-        for (NodeSelection.Score s:old) hints.add(s.endpoint);
-        ui.show(1,R.string.scan_prepare,new UiText(R.string.scan_load_history),5);
-        for (ScanIntensity other:ScanIntensity.values()) if (level!=other)
-            for (NodeSelection.Score s:new SelectionCache(ctx,p,other).load()) hints.add(s.endpoint);
-        ScanJournal state=ScanJournal.open(ctx,p,level,hints);
+        ScanJournal state=prepare(ctx,p,level,old);
+        if(!state.pending.isEmpty())
+            ui.show(Step.SCREEN,R.string.scan_resume_candidates,new UiText(0),12);
         DiagnosticLog.info(ctx,SELECTION,"SCAN "+p+" "+level.name()+" cursor="+state.cursor+" candidates="+state.plan.size()
                 +" samples="+level.samples+" timeout="+settings.probeSeconds+"s no-tun");
         List<NodeSelection.Score> passed=new ArrayList<>();
@@ -126,7 +142,7 @@ final class LocalSelection {
                 if (state.cursor>=state.plan.size()) break;
                 int end=Math.min(state.cursor+level.workers(),state.plan.size());
                 List<String> wave=state.plan.subList(state.cursor,end);
-                ui.show(2,R.string.scan_coarse,new UiText(R.string.scan_candidate_range,state.cursor+1,end,state.plan.size()),
+                ui.show(Step.SCREEN,R.string.scan_coarse,new UiText(R.string.scan_candidate_range,state.cursor+1,end,state.plan.size()),
                         12+45*state.cursor/state.plan.size());
                 List<String> fast=ProbeWave.run(ctx,p,id,wave,settings,deadline,cancel);
                 if(fast==null) break;
@@ -139,7 +155,7 @@ final class LocalSelection {
                 continue;
             }
             String ep=state.pending.get(0);
-            ui.show(3,R.string.scan_fine,new UiText(R.string.scan_candidate_results,ep,passed.size(),level.goal),
+            ui.show(Step.VERIFY,R.string.scan_fine,new UiText(R.string.scan_candidate_results,ep,passed.size(),level.goal),
                     58+40*passed.size()/level.goal);
             NodeSelection.Score s;
             try { s=measure(ctx,p,id,ep,level.samples,settings,deadline,cancel); }
@@ -150,6 +166,8 @@ final class LocalSelection {
                 old.add(s); passed.add(s);
                 DiagnosticLog.info(ctx,SELECTION,"SAMPLE "+p+" "+ep+" "+s.successes+"/"+s.attempts+" "+s.ms+"ms");
             }
+            if(passed.size()==level.goal)
+                ui.show(Step.SUMMARY,R.string.scan_update_cache,new UiText(0),99);
             cache.save(old);
             state.pending.remove(0);
             state.save();

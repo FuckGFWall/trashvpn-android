@@ -15,7 +15,7 @@ final class ScanJournal {
     ScanJournal(SharedPreferences prefs,String key,List<String> plan,List<String> pending,int cursor,long created) {
         this.prefs=prefs; this.key=key; this.plan=plan; this.pending=pending; this.cursor=cursor; this.created=created;
     }
-    static ScanJournal open(Context c,WarpProfile.Protocol p,ScanIntensity level,List<String> hints) throws Exception {
+    static synchronized ScanJournal open(Context c,WarpProfile.Protocol p,ScanIntensity level,List<String> hints) throws Exception {
         SharedPreferences prefs=c.getSharedPreferences("selection-progress-v1",Context.MODE_PRIVATE);
         String key=p.name()+".true."+level.name(); // Reuse journals from locally registered devices.
         long now=System.currentTimeMillis();

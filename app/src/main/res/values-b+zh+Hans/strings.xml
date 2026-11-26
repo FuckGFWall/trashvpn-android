@@ -64,7 +64,16 @@
     <string name="scan_action">优选</string>
     <string name="switching_protocol">正在切换协议</string>
     <string name="registering">正在注册 Cloudflare WARP</string>
-    <string name="step_format">%1$d/3 %2$s</string>
+    <string name="preparation_step_format">%1$d/%2$d %3$s · %4$s</string>
+    <string name="registration_device_stage">设备准备</string>
+    <string name="registration_configure_stage">配置协议</string>
+    <string name="registration_save_stage">保存凭据</string>
+    <string name="scan_screen_stage">候选初筛</string>
+    <string name="scan_verify_stage">节点验证</string>
+    <string name="scan_summary_stage">汇总结果</string>
+    <string name="scan_resume_candidates">载入已通过初筛的候选</string>
+    <string name="scan_supplementary">补充初筛</string>
+    <string name="scan_update_cache">更新本地节点缓存</string>
     <string name="pausing">正在暂停</string>
     <string name="pause">暂停</string>
     <string name="vpn_starting">正在建立 VPN</string>
@@ -93,8 +102,6 @@
     <string name="scan_candidate_range">候选 %1$d–%2$d / %3$d</string>
     <string name="scan_fine">WARP 精筛</string>
     <string name="scan_candidate_results">%1$s · 通过 %2$d/%3$d</string>
-    <string name="scan_blocked">系统未允许后台筛选</string>
-    <string name="scan_channel">节点筛选</string>
     <string name="scan_paused">筛选已暂停</string>
     <string name="scan_interrupted">筛选中断</string>
     <string name="scan_finished">筛选完成</string>
@@ -120,4 +127,14 @@
     <string name="disconnect">断开</string>
     <string name="vpn_stopping">正在断开</string>
     <string name="vpn_closing">正在关闭 Android VPN 接口。</string>
+    <string name="update_available">有新版本：%1$s</string>
+    <string name="export_nodes">节点</string>
+    <string name="node_export">节点导出</string>
+    <string name="node_export_copy">复制</string>
+    <string name="node_export_copied">已复制节点</string>
+    <string name="node_export_failed">未能复制缓存节点</string>
+    <plurals name="node_export_count">
+        <item quantity="one">复制本地缓存中的 %1$d 个节点。</item>
+        <item quantity="other">复制本地缓存中的 %1$d 个节点。</item>
+    </plurals>
 </resources>

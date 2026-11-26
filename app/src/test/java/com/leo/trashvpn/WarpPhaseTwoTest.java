@@ -3,6 +3,7 @@ package com.leo.trashvpn;
 import java.util.*;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.time.Instant;
 import org.bouncycastle.crypto.params.X25519PrivateKeyParameters;
 import org.bouncycastle.asn1.sec.ECPrivateKey;
 import org.bouncycastle.asn1.x9.ECNamedCurveTable;
@@ -13,6 +14,7 @@ import org.junit.Test;
 import static org.junit.Assert.*;
 
 public class WarpPhaseTwoTest {
+    private static final Instant FIRST_USE=Instant.parse("2026-11-26T08:17:02.123Z");
     static final class Journal implements WarpRegistration.Store {
         String data;
         public JSONObject read() throws Exception { return data == null ? null : new JSONObject(data); }
@@ -44,6 +46,7 @@ public class WarpPhaseTwoTest {
                 creates++;
                 assertEquals("",suffix);
                 assertNull(bearer);
+                assertEquals(FIRST_USE.toString(),fields.getString("tos"));
                 assertEquals("wireguard",fields.getString("tunnel_type"));
                 wgPublic=fields.getString("key");
                 return response(32).put("id","test-device").put("token","test-token");
@@ -66,7 +69,7 @@ public class WarpPhaseTwoTest {
 
     @Test public void enrolledWireguardUsesSameKeypairAndClientIdForBothModes() throws Exception {
         Journal j=new Journal(); FakeApi api=new FakeApi();
-        TunnelIdentity id=WarpRegistration.provision(false,j,api);
+        TunnelIdentity id=WarpRegistration.provision(false,j,FIRST_USE,api);
         byte[] priv=Base64.getDecoder().decode(id.privateKey);
         assertArrayEquals(Base64.getDecoder().decode(api.wgPublic),new X25519PrivateKeyParameters(priv,0).generatePublicKey().getEncoded());
         assertFalse(j.read().has("token"));
@@ -75,17 +78,17 @@ public class WarpPhaseTwoTest {
             assertTrue(yaml.contains("ip: 172.16.0.77"));
             assertTrue(yaml.contains("reserved: [1, 2, 3]"));
         }
-        WarpRegistration.provision(false,j,api);
+        WarpRegistration.provision(false,j,FIRST_USE,api);
         assertEquals(1,api.creates);
         assertEquals(1,api.patches);
     }
 
     @Test public void pendingMasqueResumesWithoutMintingAnotherDeviceAndMatchesEnrolledSpki() throws Exception {
         Journal j=new Journal(); FakeApi api=new FakeApi(); api.failPatch=true;
-        assertThrows(IOException.class,()-> WarpRegistration.provision(true,j,api));
+        assertThrows(IOException.class,()-> WarpRegistration.provision(true,j,FIRST_USE,api));
         assertEquals("pending",j.read().getString("state"));
         api.failPatch=false;
-        TunnelIdentity id=WarpRegistration.provision(true,j,api);
+        TunnelIdentity id=WarpRegistration.provision(true,j,FIRST_USE,api);
         assertEquals(1,api.creates);
         assertEquals(2,api.patches);
         ECPrivateKey key=ECPrivateKey.getInstance(Base64.getDecoder().decode(id.privateKey));
@@ -97,9 +100,16 @@ public class WarpPhaseTwoTest {
 
     @Test public void malformedEnrollmentDoesNotPromotePartialKeys() throws Exception {
         Journal j=new Journal();
-        assertThrows(Exception.class,()->WarpRegistration.provision(true,j,(m,s,t,p)->
+        assertThrows(Exception.class,()->WarpRegistration.provision(true,j,FIRST_USE,(m,s,t,p)->
                 "POST".equals(m)?response(32).put("id","test").put("token","token"):response(32)));
         assertEquals("pending",j.read().getString("state"));
+    }
+
+    @Test public void newRegistrationDoesNotSendARequestWithoutFirstUse() {
+        FakeApi api=new FakeApi();
+        assertThrows(IOException.class,()->WarpRegistration.provision(false,new Journal(),null,api));
+        assertEquals(0,api.creates);
+        assertEquals(0,api.patches);
     }
 
     @Test public void historyIsFilteredAndProtocolPoolsAreNotInterchangeable() {

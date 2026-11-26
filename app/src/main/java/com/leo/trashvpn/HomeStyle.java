@@ -7,6 +7,7 @@ import android.graphics.*;
 import android.graphics.drawable.*;
 import android.view.View;
 import android.view.animation.DecelerateInterpolator;
+import android.view.animation.LinearInterpolator;
 
 final class HomeStyle {
     static final String THEME_PREF="theme", DEFAULT_THEME="system";
@@ -109,6 +110,7 @@ final class HomeStyle {
                     stroke(ink,7); line(c,25,75,74,26); line(c,38,26,74,26); line(c,74,26,74,62);
                     break;
                 case SHARE:
+                    c.scale(.78f,.78f,50,50);
                     stroke(ink,5); line(c,31,47,63,29); line(c,31,53,63,71);
                     fill(ink); c.drawCircle(24,50,10,paint); c.drawCircle(70,25,10,paint); c.drawCircle(70,75,10,paint);
                     break;
@@ -159,15 +161,23 @@ final class HomeStyle {
     @android.annotation.SuppressLint("ViewConstructor") // Programmatic only: the palette is required.
     static final class Track extends View {
         static final int REGISTRATION=25;
+        enum Running { NONE, REGISTER, SELECT }
         private final Paint paint=new Paint(Paint.ANTI_ALIAS_FLAG);
         private final HomeStyle s;
+        private final Matrix sweepTransform=new Matrix();
+        private final LinearGradient sweepGradient=new LinearGradient(-1,0,1,0,
+                new int[]{0x00ffb67c,0xbaffb67c,0x00ffb67c},null,Shader.TileMode.CLAMP);
         private float value;
+        private float sweepPosition;
         private int target;
         private boolean ready, registered;
-        private ValueAnimator motion;
+        private Running running=Running.NONE;
+        private ValueAnimator motion, sweep;
         Track(Context c,HomeStyle s) { super(c); this.s=s; }
-        void update(int percent,boolean registered,boolean ready) {
+        void update(int percent,boolean registered,boolean ready,Running running) {
             this.registered=registered; this.ready=ready;
+            this.running=running;
+            syncSweep(isAttachedToWindow() && getWindowVisibility()==VISIBLE && isShown());
             if(target!=percent) {
                 target=percent;
                 if(motion!=null) motion.cancel();
@@ -182,8 +192,36 @@ final class HomeStyle {
             }
             invalidate();
         }
+        private void syncSweep(boolean visible) {
+            if(!visible || running==Running.NONE || !ValueAnimator.areAnimatorsEnabled()) {
+                stopSweep();
+                return;
+            }
+            if(sweep==null) {
+                sweep=ValueAnimator.ofFloat(0,1);
+                sweep.setDuration(1350);
+                sweep.setRepeatCount(ValueAnimator.INFINITE);
+                sweep.setInterpolator(new LinearInterpolator());
+                sweep.addUpdateListener(a->{
+                    sweepPosition=(float)a.getAnimatedValue();
+                    invalidate();
+                });
+            }
+            if(!sweep.isStarted()) sweep.start();
+        }
+        private void stopSweep() {
+            if(sweep!=null && sweep.isStarted()) {
+                sweep.cancel();
+                invalidate();
+            }
+        }
+        @Override public void onVisibilityAggregated(boolean visible) {
+            super.onVisibilityAggregated(visible);
+            syncSweep(visible);
+        }
         @Override protected void onDetachedFromWindow() {
             if(motion!=null) motion.cancel();
+            stopSweep();
             value=target;
             super.onDetachedFromWindow();
         }
@@ -201,13 +239,33 @@ final class HomeStyle {
             float end=getWidth()-7*d;
             float x=value<=REGISTRATION ? milestone*value/REGISTRATION
                     : milestone+(end-milestone)*(value-REGISTRATION)/(100-REGISTRATION);
+            float thumb=Math.max(6*d,x);
             if(value>0) {
                 paint.setColor(active);
-                c.drawRoundRect(0,y-r,Math.min(getWidth(),x+5*d),y+r,r,r,paint);
+                float fillEnd=Math.min(getWidth(),x+5*d);
+                c.drawRoundRect(0,y-r,fillEnd,y+r,r,r,paint);
+                if(sweep!=null && sweep.isStarted()) drawSweep(c,y,r,milestone,Math.min(thumb,fillEnd));
             }
             dot(c,milestone,y,4.5f*d,registered && value>=REGISTRATION-.1f?active:s.disabled);
             dot(c,end,y,4.5f*d,ready && value>=99.9f?active:s.disabled);
-            if(value>0) dot(c,Math.max(6*d,x),y,5.5f*d,active);
+            if(value>0) dot(c,thumb,y,5.5f*d,active);
+            c.restore();
+        }
+        private void drawSweep(Canvas c,float y,float radius,float milestone,float thumb) {
+            float start=running==Running.REGISTER?0:milestone;
+            float stop=running==Running.REGISTER?Math.min(milestone,thumb):thumb;
+            if(stop<=start) return;
+            float halfBand=Math.min(5*radius,(stop-start)*.4f);
+            float center=start-halfBand+(stop-start+2*halfBand)*sweepPosition;
+            sweepTransform.setScale(halfBand,1);
+            sweepTransform.postTranslate(center,0);
+            sweepGradient.setLocalMatrix(sweepTransform);
+            c.save();
+            c.clipRect(start,y-radius,stop,y+radius);
+            paint.setColor(Color.WHITE);
+            paint.setShader(sweepGradient);
+            c.drawRoundRect(0,y-radius,getWidth(),y+radius,radius,radius,paint);
+            paint.setShader(null);
             c.restore();
         }
         private void dot(Canvas c,float x,float y,float radius,int color) {

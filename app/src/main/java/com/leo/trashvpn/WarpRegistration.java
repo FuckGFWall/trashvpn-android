@@ -45,15 +45,24 @@ final class WarpRegistration {
         return new KeyStoreFile(c, masque ? "device-masque.v2" : "device-wireguard.v2");
     }
 
-    interface Progress { void update(int step,int title); }
+    enum Step {
+        DEVICE(R.string.registration_device_stage),
+        CONFIGURE(R.string.registration_configure_stage),
+        SAVE(R.string.registration_save_stage);
+
+        final int label;
+        Step(int label) { this.label=label; }
+    }
+    interface Progress { void update(Step step,int title); }
 
     static synchronized TunnelIdentity register(Context context, boolean masque, Progress progress) throws Exception {
+        Instant acceptedAt=EnrollmentConsent.enrollmentStartedAt(context);
         KeyStoreFile file = slot(context, masque);
         Network network = context.getSystemService(ConnectivityManager.class).getActiveNetwork();
         TunnelIdentity identity = provision(masque, new Store() {
             public JSONObject read() throws Exception { return file.exists() ? file.readRecord() : null; }
             public void save(JSONObject o) throws Exception { file.writeRecord(o); }
-        }, (method, suffix, bearer, request) -> {
+        },acceptedAt,(method, suffix, bearer, request) -> {
             if (network == null) throw new IOException("No active network");
             return RegistrationRoutes.send(URI.create(HOST + suffix), RegistrationRoutes::systemHttpProxy,
                     proxy -> request(network, proxy, method, suffix, bearer, request));
@@ -91,15 +100,16 @@ final class WarpRegistration {
         return id;
     }
 
-    static TunnelIdentity provision(boolean masque, Store store, Api api) throws Exception {
-        return provision(masque, store, api, (step, title) -> {});
+    static TunnelIdentity provision(boolean masque,Store store,Instant acceptedAt,Api api) throws Exception {
+        return provision(masque,store,acceptedAt,api,(step,title)->{});
     }
 
-    static TunnelIdentity provision(boolean masque, Store store, Api api, Progress progress) throws Exception {
+    static TunnelIdentity provision(boolean masque,Store store,Instant acceptedAt,Api api,Progress progress) throws Exception {
         JSONObject record = store.read();
         if (record != null && "ready".equals(record.optString("state"))) return ready(record, masque);
+        if(acceptedAt==null) throw new IOException("User acceptance is required to provision");
         if (record == null) {
-            progress.update(1,R.string.creating_device);
+            progress.update(Step.DEVICE,R.string.creating_device);
             X25519PrivateKeyParameters wg = new X25519PrivateKeyParameters(RANDOM);
             byte[] serial = new byte[8];
             RANDOM.nextBytes(serial);
@@ -107,7 +117,7 @@ final class WarpRegistration {
                     .put("key_type", "curve25519").put("tunnel_type", "wireguard")
                     .put("install_id", "").put("fcm_token", "").put("model", "Android")
                     .put("serial_number", b64(serial)).put("os_version", "").put("locale", "en_US")
-                    .put("tos", new DateTimeFormatterBuilder().appendInstant(3).toFormatter().format(Instant.now()));
+                    .put("tos", new DateTimeFormatterBuilder().appendInstant(3).toFormatter().format(acceptedAt));
             String priv = b64(wg.getEncoded()), pub = "";
             if (masque) {
                 KeyPairGenerator generator = KeyPairGenerator.getInstance("EC");
@@ -132,14 +142,14 @@ final class WarpRegistration {
         JSONObject patch = masque ? new JSONObject().put("key", record.getString("public"))
                 .put("key_type", "secp256r1").put("tunnel_type", "masque").put("name", "TrashVPN Android")
                 : new JSONObject().put("warp_enabled", true);
-        progress.update(2,masque?R.string.register_masque_key:R.string.enable_warp);
+        progress.update(Step.CONFIGURE,masque?R.string.register_masque_key:R.string.enable_warp);
         JSONObject updated = api.call("PATCH", "/" + record.getString("id"), record.getString("token"), patch);
         if (masque || updated.has("config")) captureConfig(record, updated, masque);
         // No account-management actions are exposed: discard the bearer after enrollment.
         JSONObject result = new JSONObject().put("state", "ready").put("private", record.getString("private"))
                 .put("peer", record.getString("peer")).put("ip", record.getString("ip"))
                 .put("reserved", record.optString("reserved"));
-        progress.update(3,R.string.save_credentials);
+        progress.update(Step.SAVE,R.string.save_credentials);
         TunnelIdentity checked = ready(result, masque);
         store.save(result);
         return checked;

@@ -20,17 +20,23 @@ final class WarpProbe {
         final TraceResult marker;
         final long elapsedMs;
         final ExitLocation location;
+        final Network verifiedNetwork;
         Result(TraceResult marker, long elapsedMs) {
-            this(marker,elapsedMs,ExitLocation.UNKNOWN);
+            this(marker,elapsedMs,ExitLocation.UNKNOWN,null);
         }
-        private Result(TraceResult marker,long elapsedMs,ExitLocation location) {
+        private Result(TraceResult marker,long elapsedMs,ExitLocation location,Network verifiedNetwork) {
             this.marker = marker;
             this.elapsedMs = elapsedMs;
             this.location = location;
+            this.verifiedNetwork=verifiedNetwork;
         }
         static Result fromTrace(String body,long elapsedMs) {
+            return fromTrace(body,elapsedMs,null);
+        }
+        private static Result fromTrace(String body,long elapsedMs,Network verifiedNetwork) {
             TraceResult marker=TraceResult.parse(body);
-            return new Result(marker,elapsedMs,marker.verified()?ExitLocation.parse(body):ExitLocation.UNKNOWN);
+            boolean verified=marker.verified();
+            return new Result(marker,elapsedMs,verified?ExitLocation.parse(body):ExitLocation.UNKNOWN,verified?verifiedNetwork:null);
         }
     }
 
@@ -67,7 +73,7 @@ final class WarpProbe {
             if (connection.getResponseCode() != 200) throw new IOException("Unexpected trace HTTP status");
             try (InputStream input = connection.getInputStream()) {
                 String body = new String(KeyStoreFile.readBounded(input), StandardCharsets.UTF_8);
-                return Result.fromTrace(body, SystemClock.elapsedRealtime() - start);
+                return Result.fromTrace(body,SystemClock.elapsedRealtime()-start,network);
             }
         } finally {
             connection.disconnect();

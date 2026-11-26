@@ -26,7 +26,7 @@ public class EnrollmentDeviceTest {
                 public JSONObject read() throws Exception { return written ? slot.readRecord() : null; }
                 public void save(JSONObject data) throws Exception { slot.writeRecord(data); written=true; }
             };
-            WarpRegistration.provision(masque, store, (method,suffix,token,req) -> {
+            WarpRegistration.provision(masque,store,java.time.Instant.parse("2026-11-26T08:17:02Z"),(method,suffix,token,req)->{
                 boolean mqPatch = masque && "PATCH".equals(method);
                 byte[] peer = new byte[32]; peer[0]=9;
                 if (mqPatch) {

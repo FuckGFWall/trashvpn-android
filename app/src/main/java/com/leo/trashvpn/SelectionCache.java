@@ -18,6 +18,9 @@ final class SelectionCache {
         key = protocol.name() + ".device" + (level == ScanIntensity.MEDIUM ? "" : "." + level.name());
     }
     List<NodeSelection.Score> load() {
+        return load(System.currentTimeMillis());
+    }
+    private List<NodeSelection.Score> load(long now) {
         List<NodeSelection.Score> scores = new ArrayList<>();
         try {
             JSONArray array = new JSONArray(prefs.getString(key,"[]"));
@@ -28,11 +31,21 @@ final class SelectionCache {
                     if (!NodeSelection.allowed(protocol,ep)) continue;
                     NodeSelection.Score s=new NodeSelection.Score(ep,o.getInt("ok"),o.getInt("n"),
                             o.getLong("ms"),o.getLong("t"));
-                    if (s.fresh(System.currentTimeMillis())) scores.add(s);
+                    if (s.fresh(now)) scores.add(s);
                 } catch (JSONException | IllegalArgumentException ignored) { }
             }
         } catch (JSONException ignored) { }
         Collections.sort(scores);
+        return scores;
+    }
+    static List<NodeSelection.Score> loadAll(Context context,WarpProfile.Protocol protocol) {
+        List<NodeSelection.Score> scores=new ArrayList<>();
+        long now=System.currentTimeMillis();
+        for(ScanIntensity level:ScanIntensity.values())
+            scores.addAll(new SelectionCache(context,protocol,level).load(now));
+        Collections.sort(scores);
+        Set<String> seen=new HashSet<>();
+        scores.removeIf(score->!seen.add(score.endpoint));
         return scores;
     }
     void save(List<NodeSelection.Score> scores) throws JSONException {

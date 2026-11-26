@@ -14,7 +14,7 @@ final class EnrollmentTask {
     final String endpoint;
     final WarpProfile.Protocol protocol;
     final ScanIntensity level;
-    int step=1;
+    WarpRegistration.Step step=WarpRegistration.Step.DEVICE;
     int title=R.string.registration_prepare;
     UiText error;
     boolean done;

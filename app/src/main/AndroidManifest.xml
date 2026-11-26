@@ -20,6 +20,7 @@
         <activity
             android:name=".MainActivity"
             android:configChanges="uiMode"
+            android:icon="@mipmap/ic_launcher"
             android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
@@ -27,7 +28,6 @@
             </intent-filter>
         </activity>
         <activity android:name=".ConnectionDiagnosticsActivity" android:exported="false" />
-        <service android:name=".ScanService" android:exported="false" android:foregroundServiceType="shortService" />
         <!-- A user-approved VPN qualifies for systemExempted without exact-alarm access. -->
         <service
             android:name=".WarpVpnService"

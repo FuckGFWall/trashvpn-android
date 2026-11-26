@@ -26,10 +26,6 @@ final class WarpProfile {
     }
 
     static String render(Protocol protocol,String endpoint,TunnelIdentity identity,NetworkSettings settings) {
-        if (!NodeSelection.allowed(protocol, endpoint)) throw new IllegalArgumentException("Invalid WARP endpoint");
-        int separator = endpoint.indexOf(':');
-        String ip = endpoint.substring(0, separator);
-        String port = endpoint.substring(separator + 1);
         String common = """
                 mode: rule
                 ipv6: false
@@ -44,13 +40,25 @@ final class WarpProfile {
                 rules:
                   - MATCH,PHASE1-WARP
                 proxies:
-                  - name: PHASE1-WARP
+                """;
+        return String.format(Locale.ROOT,common,dnsBlock(settings).trim())
+                + proxyYaml(protocol,endpoint,PROXY,identity,settings);
+    }
+
+    static String proxyYaml(Protocol protocol,String endpoint,String name,TunnelIdentity identity,NetworkSettings settings) {
+        if (!NodeSelection.allowed(protocol, endpoint)) throw new IllegalArgumentException("Invalid WARP endpoint");
+        if (!name.matches("[A-Za-z0-9_.-]{1,64}")) throw new IllegalArgumentException("Invalid node name");
+        int separator = endpoint.indexOf(':');
+        String ip = endpoint.substring(0, separator);
+        String port = endpoint.substring(separator + 1);
+        String common = """
+                  - name: %s
                     ip: %s
                     udp: true
                     remote-dns-resolve: true
                     dns: ['%s']
                 """;
-        common = String.format(Locale.ROOT, common, dnsBlock(settings).trim(),identity.address,settings.outboundResolver());
+        common=String.format(Locale.ROOT,common,name,identity.address,settings.outboundResolver());
         if (protocol == Protocol.MASQUE) {
             return common + String.format(Locale.ROOT, """
                     type: masque

@@ -64,7 +64,16 @@
     <string name="scan_action">گزینش</string>
     <string name="switching_protocol">در حال تغییر پروتکل</string>
     <string name="registering">در حال ثبت در Cloudflare WARP</string>
-    <string name="step_format">%1$d/۳ %2$s</string>
+    <string name="preparation_step_format">%1$d/%2$d %3$s · %4$s</string>
+    <string name="registration_device_stage">آماده‌سازی دستگاه</string>
+    <string name="registration_configure_stage">پیکربندی پروتکل</string>
+    <string name="registration_save_stage">ذخیرهٔ اعتبارنامه‌ها</string>
+    <string name="scan_screen_stage">غربال نامزدها</string>
+    <string name="scan_verify_stage">اعتبارسنجی گره‌ها</string>
+    <string name="scan_summary_stage">جمع‌بندی نتایج</string>
+    <string name="scan_resume_candidates">بارگیری نامزدهای غربال‌شدهٔ قبلی</string>
+    <string name="scan_supplementary">غربال نامزدهای بیشتر</string>
+    <string name="scan_update_cache">به‌روزرسانی حافظهٔ پنهان محلی</string>
     <string name="pausing">در حال مکث</string>
     <string name="pause">مکث</string>
     <string name="vpn_starting">در حال راه‌اندازی VPN</string>
@@ -93,8 +102,6 @@
     <string name="scan_candidate_range">نامزدهای %1$d تا %2$d از %3$d</string>
     <string name="scan_fine">اعتبارسنجی WARP</string>
     <string name="scan_candidate_results">%1$s · تأییدشده: %2$d از %3$d</string>
-    <string name="scan_blocked">اندروید اجازهٔ گزینش در پس‌زمینه را نداد</string>
-    <string name="scan_channel">گزینش گره</string>
     <string name="scan_paused">گزینش متوقف شد</string>
     <string name="scan_interrupted">گزینش قطع شد</string>
     <string name="scan_finished">گزینش کامل شد</string>
@@ -120,4 +127,14 @@
     <string name="disconnect">قطع</string>
     <string name="vpn_stopping">در حال قطع</string>
     <string name="vpn_closing">در حال بستن رابط VPN اندروید.</string>
+    <string name="update_available">نسخهٔ جدید در دسترس است: %1$s</string>
+    <string name="export_nodes">گره‌ها</string>
+    <string name="node_export">خروجی گره‌ها</string>
+    <string name="node_export_copy">کپی</string>
+    <string name="node_export_copied">گره‌ها کپی شدند</string>
+    <string name="node_export_failed">کپی گره‌های ذخیره‌شده ممکن نبود</string>
+    <plurals name="node_export_count">
+        <item quantity="one">کپی %1$d گره از حافظهٔ محلی.</item>
+        <item quantity="other">کپی %1$d گره از حافظهٔ محلی.</item>
+    </plurals>
 </resources>

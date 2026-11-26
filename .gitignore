@@ -1,0 +1,41 @@
+# Gradle, Android Studio, and local SDK configuration
+.gradle/
+.gradle-user/
+.idea/
+*.iml
+local.properties
+.cxx/
+.externalNativeBuild/
+build/
+captures/
+
+# Downloaded dependencies and machine-local data
+/.deps/
+/.local/
+
+# Generated packages, logs, and temporary files
+*.apk
+*.aab
+*.aar
+*.ap_
+*.hprof
+*.log
+*.tmp
+__pycache__/
+*.py[cod]
+.DS_Store
+Thumbs.db
+
+# Signing keys and local secrets
+*.jks
+*.keystore
+*.pfx
+*.p12
+*.password.dpapi
+.env
+.env.*
+!.env.example
+*credentials*.json
+!/docs/phase1-credentials.example.json
+*.local.json
+/config.yaml

@@ -1,0 +1,30 @@
+<resources>
+    <string name="app_name" translatable="false">TrashVPN</string>
+    <string name="settings_dropdown" translatable="false">%1$s  ▾</string>
+    <string name="node_latency" translatable="false">%1$d ms</string>
+    <string name="exit_location_unknown" translatable="false">—</string>
+    <item type="id" name="home_page"/>
+    <item type="id" name="settings_page"/>
+    <item type="id" name="settings_intensity"/>
+    <item type="id" name="settings_language"/>
+    <item type="id" name="settings_auto_connect"/>
+    <item type="id" name="settings_timeout"/>
+    <item type="id" name="settings_mtu"/>
+    <item type="id" name="settings_dns"/>
+    <item type="id" name="settings_about"/>
+    <item type="id" name="settings_donate"/>
+    <item type="id" name="diagnostics_share"/>
+    <item type="id" name="diagnostics_text"/>
+    <style name="AppTheme" parent="android:style/Theme.Material.NoActionBar">
+        <item name="android:fontFamily">sans</item>
+        <item name="android:colorAccent">#FF711E</item>
+        <item name="android:statusBarColor">#000000</item>
+        <item name="android:navigationBarColor">#000000</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:windowBackground">#000000</item>
+    </style>
+    <style name="AppThemeLight" parent="android:style/Theme.Material.Light.NoActionBar">
+        <item name="android:colorAccent">#C54906</item>
+        <item name="android:windowBackground">#F2F2F7</item>
+    </style>
+</resources>

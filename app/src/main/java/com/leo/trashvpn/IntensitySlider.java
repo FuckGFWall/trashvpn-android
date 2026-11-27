@@ -1,9 +1,14 @@
 package com.leo.trashvpn;
 
 import android.content.Context;
+import android.graphics.drawable.ClipDrawable;
+import android.graphics.drawable.Drawable;
+import android.graphics.drawable.GradientDrawable;
+import android.graphics.drawable.LayerDrawable;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.SystemClock;
+import android.view.Gravity;
 import android.view.MotionEvent;
 import android.view.accessibility.AccessibilityNodeInfo;
 import android.widget.SeekBar;
@@ -24,6 +29,14 @@ final class IntensitySlider extends SeekBar {
         this.preview=preview;
         this.commit=commit;
         selected=initial;
+        float density=getResources().getDisplayMetrics().density;
+        setProgressDrawable(track(Math.round(5*density)));
+        int diameter=Math.round(22*density);
+        GradientDrawable thumb=new GradientDrawable();
+        thumb.setShape(GradientDrawable.OVAL);
+        thumb.setSize(diameter,diameter);
+        thumb.setColor(0xffffffff); // The hosting theme applies the orange thumb tint.
+        setThumb(thumb);
         setSaveEnabled(false); // A transient drag must not override the saved preference after recreation.
         setMax(STEP*(LEVELS.length-1));
         setKeyProgressIncrement(STEP);
@@ -41,6 +54,27 @@ final class IntensitySlider extends SeekBar {
                 select(cancelled?selected:nearestLevel(getProgress()));
             }
         });
+    }
+
+    @android.annotation.SuppressLint("RtlHardcoded") // SeekBar mirrors the entire drawable in RTL.
+    private static LayerDrawable track(int height) {
+        GradientDrawable background=trackLine(height);
+        ClipDrawable fill=new ClipDrawable(trackLine(height),Gravity.LEFT,ClipDrawable.HORIZONTAL);
+        LayerDrawable track=new LayerDrawable(new Drawable[]{background,fill});
+        track.setId(0,android.R.id.background);
+        track.setId(1,android.R.id.progress);
+        for(int layer=0;layer<2;layer++) {
+            track.setLayerHeight(layer,height);
+            track.setLayerGravity(layer,Gravity.FILL_HORIZONTAL|Gravity.CENTER_VERTICAL);
+        }
+        return track;
+    }
+
+    private static GradientDrawable trackLine(int height) {
+        GradientDrawable line=new GradientDrawable();
+        line.setCornerRadius(height/2f);
+        line.setColor(0xffffffff); // The host applies the existing active/inactive tint.
+        return line;
     }
 
     void select(ScanIntensity level) {

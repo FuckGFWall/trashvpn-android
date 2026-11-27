@@ -6,7 +6,7 @@ import android.os.Looper;
 
 /** Registration state survives Activity recreation; private response material never enters the UI. */
 final class EnrollmentTask {
-    enum Action { CONNECT, SCAN }
+    enum Action { CONNECT, SCAN, RESCAN }
     static EnrollmentTask current;
     static Runnable observer;
     final boolean masque;

@@ -5,6 +5,9 @@
     <string name="node_latency" translatable="false">%1$d ms</string>
     <string name="exit_location_unknown" translatable="false">—</string>
     <item type="id" name="home_page"/>
+    <item type="id" name="connection_state"/>
+    <item type="id" name="preparation_status"/>
+    <item type="id" name="exit_latency"/>
     <item type="id" name="settings_page"/>
     <item type="id" name="settings_intensity"/>
     <item type="id" name="settings_language"/>

@@ -25,12 +25,18 @@ final class NodeDiagnostics {
         final ScanIntensity level;
         final List<String> endpoints;
         final boolean viaVpnService;
+        final WarpVpnService.ActiveNode activeNode;
         final AtomicBoolean cancel=new AtomicBoolean();
         final Map<String,Long> results=new LinkedHashMap<>(); // absent = pending; -1 = not verified
         boolean done;
         Job(WarpProfile.Protocol p,ScanIntensity level,List<String> endpoints,boolean connected) {
+            this(p,level,endpoints,connected,null);
+        }
+        Job(WarpProfile.Protocol p,ScanIntensity level,List<String> endpoints,boolean connected,
+                WarpVpnService.ActiveNode activeNode) {
             protocol=p; this.level=level; this.endpoints=Collections.unmodifiableList(new ArrayList<>(endpoints));
             viaVpnService=connected;
+            this.activeNode=activeNode;
         }
     }
     static void changed() { if(observer!=null) observer.run(); }

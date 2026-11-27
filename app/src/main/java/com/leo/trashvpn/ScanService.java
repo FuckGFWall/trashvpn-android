@@ -11,13 +11,17 @@ final class ScanService {
     static final class Job {
         final WarpProfile.Protocol protocol;
         final ScanIntensity level;
+        final boolean resample;
         final AtomicBoolean cancel=new AtomicBoolean();
         LocalSelection.Step step=LocalSelection.Step.PREPARE;
         int title=R.string.scan_load_history;
         UiText detail=new UiText(R.string.scan_continue_background);
         boolean done; int found, percent=5;
         Job(WarpProfile.Protocol p,ScanIntensity l) {
-            protocol=p; level=l;
+            this(p,l,false);
+        }
+        Job(WarpProfile.Protocol p,ScanIntensity l,boolean resample) {
+            protocol=p; level=l; this.resample=resample;
         }
         void progress(LocalSelection.Step next,int title,UiText detail,int percent) {
             // Verification may need more candidates. Show the extra screening within step 3.
@@ -44,7 +48,7 @@ final class ScanService {
         new Thread(()->{
             int count=0; boolean error=false;
             try {
-                count=LocalSelection.run(app,j.protocol,j.level,j.cancel,(step,title,detail,percent)->MAIN.post(()->{
+                count=LocalSelection.run(app,j.protocol,j.level,j.resample,j.cancel,(step,title,detail,percent)->MAIN.post(()->{
                     if(j.cancel.get() || j.done || j!=current) return;
                     j.progress(step,title,detail,percent);
                     notifyUi();

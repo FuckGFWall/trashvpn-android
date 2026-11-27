@@ -2,6 +2,7 @@
     <string name="vpn_permission_denied">Android did not grant VPN permission.</string>
     <string name="exit_country">Country: %1$s</string>
     <string name="exit_data_center">Data center: %1$s</string>
+    <string name="exit_latency">Delay: %1$s</string>
     <string name="active_auto_node">Auto select, active node: %1$s</string>
     <string name="connection_diagnostics">Connection diagnostics</string>
     <string name="diagnostics_empty">No logs yet. Node selection, connection and latency results will appear here.</string>
@@ -42,7 +43,7 @@
     <string name="intensity_low">Low</string>
     <string name="intensity_medium">Medium</string>
     <string name="intensity_high">High</string>
-    <string name="intensity_description">Concurrent probes: %1$d · Candidate limit: %2$d · Target: %3$d · Probes per node: %4$d · Time limit: %5$d s.</string>
+    <string name="intensity_description">Concurrent screening probes: %1$d · Candidate limit: %2$d · Target: %3$d · Up to %4$d HTTPS requests per node · Time budget: %5$d s.</string>
     <string name="probe_timeout">Probe timeout</string>
     <string name="seconds">s</string>
     <string name="auto_connect_after_scan">Connect automatically after selection</string>
@@ -61,6 +62,7 @@
     <string name="connected">Connected</string>
     <string name="disconnected">Disconnected</string>
     <string name="scan_again">Scan again</string>
+    <string name="scan_resume">Resume scan</string>
     <string name="scan_action">Scan</string>
     <string name="switching_protocol">Switching protocol</string>
     <string name="registering">Registering with Cloudflare WARP</string>
@@ -77,6 +79,7 @@
     <string name="pausing">Pausing</string>
     <string name="pause">Pause</string>
     <string name="vpn_starting">Starting VPN</string>
+    <string name="connecting">Connecting</string>
     <string name="vpn_launch_blocked">Android blocked the VPN service from starting.</string>
     <string name="register_masque">Register a MASQUE identity</string>
     <string name="register_wg">Register an AWG / WG identity</string>

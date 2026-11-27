@@ -4,7 +4,6 @@ import android.animation.Animator;
 import android.animation.AnimatorListenerAdapter;
 import android.animation.ValueAnimator;
 import android.app.Activity;
-import android.app.ActivityManager;
 import android.app.NotificationManager;
 import android.content.ActivityNotFoundException;
 import android.content.Intent;
@@ -14,9 +13,12 @@ import android.content.res.Configuration;
 import android.content.res.ColorStateList;
 import android.content.pm.PackageManager;
 import android.text.InputType;
+import android.text.SpannableString;
+import android.text.Spanned;
+import android.text.TextUtils;
+import android.text.style.ForegroundColorSpan;
 import android.view.inputmethod.EditorInfo;
 import android.view.inputmethod.InputMethodManager;
-import android.graphics.BitmapFactory;
 import android.graphics.Typeface;
 import android.graphics.Rect;
 import android.net.Uri;
@@ -46,7 +48,9 @@ import static com.leo.trashvpn.R.string.*;
 
 public final class MainActivity extends Activity {
     private static final int VPN_PERMISSION=10, CONNECTED_NOTIFICATIONS=11;
-    private static final int NODE_NAME_SP=16;
+    private static final int NODE_NAME_SP=14;
+    private static final int REGISTRATION_STEPS=WarpRegistration.Step.values().length;
+    private static final int PREPARATION_STEPS=REGISTRATION_STEPS+LocalSelection.Step.values().length;
     private final WarpVpnService.Observer observer=this::onVpnStatus;
     private final CacheBootstrap bootstrap=new CacheBootstrap();
     private final Runnable updateObserver=this::refreshUpdateNotice;
@@ -71,12 +75,12 @@ public final class MainActivity extends Activity {
     private View protocolControl, dnsInput, dnsLeak;
     private PowerDial power;
     private HomeStyle.Track track;
-    private TextView progressTitle, progressDetail, scanAction, protocolText, stageLeft, stageRight;
+    private TextView connectionState, progressTitle, progressDetail, scanAction, protocolText, stageLeft, stageRight;
     private TextView delayAction;
     private TextView updateNotice;
     private NodeExportSettings nodeExportSettings;
     private LinearLayout localMetadata, exitMetadata;
-    private TextView exitCountry, exitDataCenter;
+    private TextView exitCountry, exitDataCenter, exitLatency;
     private List<String> nodeEntries=new ArrayList<>();
     private final List<LinearLayout> nodeRows=new ArrayList<>();
     private final java.util.Map<String,DelayBadge> delayBadges=new java.util.LinkedHashMap<>();
@@ -107,12 +111,6 @@ public final class MainActivity extends Activity {
             bootstrap.restore(saved.getStringArrayList("bootstrap"));
         }
         build();
-        setRecentsIcon();
-    }
-    @SuppressWarnings("deprecation") // Some system launchers only read the task's bitmap, not its icon resource.
-    private void setRecentsIcon() {
-        setTaskDescription(new ActivityManager.TaskDescription(getString(R.string.app_name),
-                BitmapFactory.decodeResource(getResources(),R.mipmap.ic_recents),0));
     }
     @Override public void onConfigurationChanged(Configuration config) {
         super.onConfigurationChanged(config);
@@ -129,6 +127,7 @@ public final class MainActivity extends Activity {
     }
     @Override protected void onResume() {
         super.onResume();
+        RecentsIcon.apply(this);
         visible=true;
         updates.onForeground(connected()?vpn.network:null);
         consume();
@@ -345,16 +344,22 @@ public final class MainActivity extends Activity {
 
     private void buildHome(LinearLayout body) {
         LinearLayout state=card(22);
+        connectionState=text("",16,style.text,true);
+        connectionState.setId(R.id.connection_state);
+        connectionState.setGravity(Gravity.CENTER);
+        connectionState.setAccessibilityLiveRegion(View.ACCESSIBILITY_LIVE_REGION_POLITE);
+        add(state,connectionState,0);
         power=new PowerDial(this,style);
         power.setOnClickListener(v->powerPressed());
         power.setFocusable(true);
-        LinearLayout.LayoutParams dial=new LinearLayout.LayoutParams(dp(172),dp(172));
+        LinearLayout.LayoutParams dial=new LinearLayout.LayoutParams(dp(144),dp(144));
         dial.gravity=Gravity.CENTER_HORIZONTAL;
-        dial.topMargin=dp(4); dial.bottomMargin=dp(20);
+        dial.topMargin=dp(8); dial.bottomMargin=dp(14);
         state.addView(power,dial);
 
         LinearLayout progress=row();
         progressTitle=text("",14,style.text,false);
+        progressTitle.setId(R.id.preparation_status);
         progressTitle.setAccessibilityLiveRegion(View.ACCESSIBILITY_LIVE_REGION_POLITE);
         progress.addView(progressTitle,new LinearLayout.LayoutParams(0,-2,1));
         scanAction=text("",13,style.orange,true);
@@ -363,6 +368,7 @@ public final class MainActivity extends Activity {
         scanAction.setMinimumHeight(dp(40));
         scanAction.setBackground(HomeStyle.shape(style.selected,dp(20)));
         scanAction.setOnClickListener(v->scanPressed());
+        scanAction.setOnLongClickListener(this::showResampleOption);
         LinearLayout.LayoutParams pill=new LinearLayout.LayoutParams(-2,-2);
         pill.setMarginStart(dp(8)); progress.addView(scanAction,pill);
         add(state,progress,0);
@@ -388,12 +394,13 @@ public final class MainActivity extends Activity {
         localMetadata.addView(text("IPv4",14,style.muted,false));
         add(metadata,localMetadata,0);
         exitMetadata=row();
-        exitCountry=text("",14,style.muted,false);
-        exitDataCenter=text("",14,style.muted,false);
-        LinearLayout.LayoutParams leftItem=new LinearLayout.LayoutParams(0,-2,1);
-        leftItem.setMarginEnd(dp(12));
-        exitMetadata.addView(metadataItem(HomeStyle.Symbol.Kind.GLOBE,exitCountry),leftItem);
-        exitMetadata.addView(metadataItem(HomeStyle.Symbol.Kind.DATACENTER,exitDataCenter));
+        exitCountry=text("",12,style.muted,false);
+        exitDataCenter=text("",12,style.muted,false);
+        exitLatency=text("",12,style.dark?style.text:android.graphics.Color.BLACK,false);
+        exitLatency.setId(R.id.exit_latency);
+        addExitItem(HomeStyle.Symbol.Kind.GLOBE,exitCountry,.85f,true);
+        addExitItem(HomeStyle.Symbol.Kind.DATACENTER,exitDataCenter,1.18f,true);
+        addExitItem(HomeStyle.Symbol.Kind.PULSE,exitLatency,1f,false);
         add(metadata,exitMetadata,0);
         add(state,metadata,19);
         add(body,state,0);
@@ -427,6 +434,17 @@ public final class MainActivity extends Activity {
         return item;
     }
 
+    private void addExitItem(HomeStyle.Symbol.Kind kind,TextView value,float weight,boolean spaced) {
+        LinearLayout item=row();
+        item.addView(new HomeStyle.Symbol(this,kind,style),dp(15),dp(15));
+        LinearLayout.LayoutParams label=new LinearLayout.LayoutParams(0,-2,1);
+        label.setMarginStart(dp(4));
+        item.addView(value,label);
+        LinearLayout.LayoutParams column=new LinearLayout.LayoutParams(0,-2,weight);
+        if(spaced) column.setMarginEnd(dp(5));
+        exitMetadata.addView(item,column);
+    }
+
     private void showMetadata(WarpProfile.Protocol protocol,ExitLocation location) {
         localMetadata.setVisibility(location==null?View.VISIBLE:View.GONE);
         exitMetadata.setVisibility(location==null?View.GONE:View.VISIBLE);
@@ -436,6 +454,7 @@ public final class MainActivity extends Activity {
             String unknown=getString(R.string.exit_location_unknown);
             exitCountry.setText(getString(R.string.exit_country,location.countryCode.isEmpty()?unknown:location.flag()));
             exitDataCenter.setText(getString(R.string.exit_data_center,location.dataCenter.isEmpty()?unknown:location.dataCenter));
+            exitLatency.setText(exitDelayText(connectedDelay(currentNode()),unknown));
         }
     }
 
@@ -478,11 +497,11 @@ public final class MainActivity extends Activity {
             String name=i<0?s(auto_select):nodeName(protocol,i);
             boolean checked=java.util.Objects.equals(endpoint,selected);
             LinearLayout line=row();
-            line.setPadding(dp(13),dp(11),dp(13),dp(11));
-            line.setBackground(HomeStyle.shape(lock?style.tile:checked?style.selected:style.tile,dp(14)));
+            line.setPadding(dp(13),dp(8),dp(13),dp(8));
+            line.setBackground(HomeStyle.shape(lock?style.tile:checked?style.selected:style.tile,dp(13)));
             HomeStyle.Symbol circle=new HomeStyle.Symbol(this,HomeStyle.Symbol.Kind.CHECK,style);
             circle.checked(checked);
-            line.addView(circle,dp(27),dp(27));
+            line.addView(circle,dp(23),dp(23));
             TextView label=text(name,NODE_NAME_SP,checked&&!lock?style.orange:style.text,true);
             LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(0,-2,1);
             lp.setMarginStart(dp(12)); line.addView(label,lp);
@@ -498,7 +517,7 @@ public final class MainActivity extends Activity {
                 line.addView(badge,new LinearLayout.LayoutParams(dp(80),dp(27)));
                 delayBadges.put(endpoint,badge);
             }
-            line.setMinimumHeight(dp(49));
+            line.setMinimumHeight(dp(44));
             line.setContentDescription(description);
             line.setSelected(checked);
             line.setOnClickListener(v->chooseNode(endpoint));
@@ -533,7 +552,7 @@ public final class MainActivity extends Activity {
         if(!registered(p)) { toast(s(registration_required)); return; }
         List<String> targets=visibleNodes(new SelectionCache(this,p,l).load(),currentNode());
         boolean online=connected();
-        NodeDiagnostics.Job job=new NodeDiagnostics.Job(p,l,targets,online);
+        NodeDiagnostics.Job job=new NodeDiagnostics.Job(p,l,targets,online,currentNode());
         NodeDiagnostics.current=job;
         refresh();
         if(online) {
@@ -548,10 +567,43 @@ public final class MainActivity extends Activity {
         delayAction.setAlpha(delayAction.isEnabled()?1f:.46f);
         NodeDiagnostics.Job job=NodeDiagnostics.current;
         boolean same=job!=null && job.protocol==protocol() && job.level==level();
+        WarpVpnService.ActiveNode active=currentNode();
         for(java.util.Map.Entry<String,DelayBadge> entry:delayBadges.entrySet()) {
             String ep=entry.getKey();
-            entry.getValue().show(same?job.results.get(ep):null,same&&!job.done&&job.endpoints.contains(ep));
+            Long result=same?job.results.get(ep):null;
+            if(active!=null && ep.equals(active.endpoint())) result=connectedDelay(active);
+            entry.getValue().show(result,same&&!job.done&&job.endpoints.contains(ep));
         }
+    }
+
+    // Share the measurement between the exit row and the actual active node's row.
+    private Long connectedDelay(WarpVpnService.ActiveNode active) {
+        if(active==null) return null;
+        NodeDiagnostics.Job job=NodeDiagnostics.current;
+        if(job!=null && job.activeNode==active) {
+            Long result=job.results.get(active.endpoint());
+            if(result!=null) return result;
+        }
+        return vpn.latencyMs!=0?vpn.latencyMs:null;
+    }
+
+    private String formatDelay(long result) {
+        return result<0?"-1":getString(R.string.node_latency,result);
+    }
+
+    private CharSequence exitDelayText(Long result,String unknown) {
+        String value=result==null?unknown:formatDelay(result);
+        String label=getString(R.string.exit_latency,value);
+        int start=label.lastIndexOf(value);
+        if(start<0 || value.isEmpty()) return label;
+        SpannableString styled=new SpannableString(label);
+        int color=result==null?style.muted:delayColor(result);
+        styled.setSpan(new ForegroundColorSpan(color),start,start+value.length(),Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+        return styled;
+    }
+
+    private int delayColor(long result) {
+        return result<0?(style.dark?0xffff6b66:0xffbc2724):(style.dark?0xff60dc91:0xff187b42);
     }
 
     private final class DelayBadge extends FrameLayout {
@@ -571,8 +623,8 @@ public final class MainActivity extends Activity {
             spinner.setVisibility(waiting&&result==null?View.VISIBLE:View.GONE);
             number.setVisibility(result==null?View.GONE:View.VISIBLE);
             if(result!=null) {
-                number.setText(result<0?"-1":getString(R.string.node_latency,result));
-                number.setTextColor(result<0?(style.dark?0xffff6b66:0xffbc2724):(style.dark?0xff60dc91:0xff187b42));
+                number.setText(formatDelay(result));
+                number.setTextColor(delayColor(result));
             }
         }
     }
@@ -849,16 +901,22 @@ public final class MainActivity extends Activity {
         power.setContentDescription(connected||connecting?s(disconnect_vpn):s(connect_vpn));
         scanAction.setEnabled(scan ? handoff==null && !ScanService.current.cancel.get() : !blocked);
         scanAction.setAlpha(scanAction.isEnabled()?1f:.43f);
-        String title=connected?s(R.string.connected):s(disconnected), detail="";
+        connectionState.setText(connected?R.string.connected:connecting?R.string.connecting:R.string.disconnected);
+        connectionState.setTextColor(connected||connecting?style.orange:style.muted);
+        String title="", detail="";
         int percent=ready?100:enrolled?HomeStyle.Track.REGISTRATION:0;
         String badge=scanAttempted||!cached.isEmpty()?s(scan_again):s(scan_action);
+        boolean canResume=!blocked && chosen==WarpProfile.Protocol.MASQUE && enrolled
+                && ScanJournal.canContinue(this,chosen,level());
+        if (canResume) badge=s(scan_resume);
+        scanAction.setLongClickable(canResume);
         HomeStyle.Track.Running running=HomeStyle.Track.Running.NONE;
         if(handoff!=null) {
             title=s(switching_protocol);
-            detail=pretty(chosen);
+            if(!connecting && !stopping) detail=pretty(chosen);
         } else if(register) {
             EnrollmentTask t=EnrollmentTask.current;
-            title=getString(preparation_step_format,t.step.ordinal()+1,WarpRegistration.Step.values().length,
+            title=getString(preparation_step_format,t.step.ordinal()+1,PREPARATION_STEPS,
                     s(t.step.label),s(t.title));
             detail=s(registering);
             percent=3+t.step.ordinal()*9;
@@ -870,14 +928,18 @@ public final class MainActivity extends Activity {
             percent=HomeStyle.Track.REGISTRATION+(100-HomeStyle.Track.REGISTRATION)*j.percent/100;
             badge=j.cancel.get()?s(pausing):s(pause);
             if(!j.cancel.get()) running=HomeStyle.Track.Running.SELECT;
-        } else if(connecting||stopping||switchingNode()) {
+        } else if(connecting||switchingNode()) {
             title=launching?s(vpn_starting):vpn.title.get(this);
-            detail=launching?"":vpn.detail.get(this);
-        } else if(homeHint!=0 && !connected) {
+        } else if(homeHint!=0 && !connected && !stopping) {
             title=homeHint==scan_finished || homeHint==scan_no_nodes
                     ? selectionTitle(LocalSelection.Step.SUMMARY,homeHint) : s(homeHint);
         }
         scanAction.setText(badge);
+        int lines=connecting?1:Integer.MAX_VALUE;
+        if(progressTitle.getMaxLines()!=lines) {
+            progressTitle.setMaxLines(lines);
+            progressTitle.setEllipsize(connecting?TextUtils.TruncateAt.END:null);
+        }
         progressTitle.setText(title);
         progressDetail.setText(detail);
         progressDetail.setVisibility(detail.isEmpty()?View.GONE:View.VISIBLE);
@@ -890,7 +952,7 @@ public final class MainActivity extends Activity {
     }
 
     private String selectionTitle(LocalSelection.Step step,int title) {
-        return getString(preparation_step_format,step.ordinal()+1,LocalSelection.Step.values().length,
+        return getString(preparation_step_format,REGISTRATION_STEPS+step.ordinal()+1,PREPARATION_STEPS,
                 s(step.label),s(title));
     }
 
@@ -922,8 +984,24 @@ public final class MainActivity extends Activity {
         if(handoff!=null) return;
         if(scanning()) { ScanService.current.cancel.set(true); refresh(); return; }
         if(!locked()) {
-            perform(EnrollmentTask.Action.SCAN,null,protocol(),level());
+            WarpProfile.Protocol p=protocol();
+            ScanIntensity l=level();
+            boolean resample=p==WarpProfile.Protocol.MASQUE && !ScanJournal.canContinue(this,p,l);
+            perform(resample?EnrollmentTask.Action.RESCAN:EnrollmentTask.Action.SCAN,null,p,l);
         }
+    }
+    private boolean showResampleOption(View anchor) {
+        WarpProfile.Protocol p=protocol();
+        ScanIntensity l=level();
+        if (locked() || p!=WarpProfile.Protocol.MASQUE || !registered(p) || !ScanJournal.canContinue(this,p,l))
+            return false;
+        android.widget.PopupMenu menu=new android.widget.PopupMenu(this,anchor,Gravity.END);
+        menu.getMenu().add(scan_again).setOnMenuItemClickListener(item->{
+            if (!locked() && p==protocol() && l==level()) perform(EnrollmentTask.Action.RESCAN,null,p,l);
+            return true;
+        });
+        menu.show();
+        return true;
     }
     private boolean autoConnect() { return prefs.getBoolean(NetworkSettings.AUTO_CONNECT,false); }
     private void bootstrapMissingCache() {
@@ -942,8 +1020,8 @@ public final class MainActivity extends Activity {
             EnrollmentTask.start(this,new EnrollmentTask(p==WarpProfile.Protocol.MASQUE,action,endpoint,p,l));
             return;
         }
-        if(action==EnrollmentTask.Action.SCAN || (endpoint==null && new SelectionCache(this,p,l).load().isEmpty()))
-            startScan(new ScanService.Job(p,l));
+        if(action!=EnrollmentTask.Action.CONNECT || (endpoint==null && new SelectionCache(this,p,l).load().isEmpty()))
+            startScan(new ScanService.Job(p,l,action==EnrollmentTask.Action.RESCAN));
         else requestVpn(p,l,endpoint,endpoint==null);
     }
     private void startScan(ScanService.Job j) {

@@ -2,6 +2,7 @@
     <string name="vpn_permission_denied">Android VPN 请求未获批准。</string>
     <string name="exit_country">国家\u202F:\u202F%1$s</string>
     <string name="exit_data_center">数据中心\u202F:\u202F%1$s</string>
+    <string name="exit_latency">延迟\u202F:\u202F%1$s</string>
     <string name="active_auto_node">自动选择，当前节点：%1$s</string>
     <string name="connection_diagnostics">连接诊断</string>
     <string name="diagnostics_empty">暂无运行日志。节点优选、连接和延迟测试的记录会显示在这里。</string>
@@ -42,7 +43,7 @@
     <string name="intensity_low">低</string>
     <string name="intensity_medium">中</string>
     <string name="intensity_high">高</string>
-    <string name="intensity_description">%1$d 路并发，初筛池上限 %2$d，目标 %3$d 个可用节点。每个测 %4$d 次，扫描预算 %5$d 秒。</string>
+    <string name="intensity_description">%1$d 路初筛并发，候选池上限 %2$d，目标 %3$d 个可用节点。每个节点最多测 %4$d 次 HTTPS，扫描预算 %5$d 秒。</string>
     <string name="probe_timeout">探测超时</string>
     <string name="seconds">秒</string>
     <string name="auto_connect_after_scan">优选完成后自动连接</string>
@@ -61,6 +62,7 @@
     <string name="connected">已连接</string>
     <string name="disconnected">未连接</string>
     <string name="scan_again">重新优选</string>
+    <string name="scan_resume">继续优选</string>
     <string name="scan_action">优选</string>
     <string name="switching_protocol">正在切换协议</string>
     <string name="registering">正在注册 Cloudflare WARP</string>
@@ -77,6 +79,7 @@
     <string name="pausing">正在暂停</string>
     <string name="pause">暂停</string>
     <string name="vpn_starting">正在建立 VPN</string>
+    <string name="connecting">正在连接</string>
     <string name="vpn_launch_blocked">系统未允许启动 VPN</string>
     <string name="register_masque">注册 MASQUE 身份</string>
     <string name="register_wg">注册 AWG / WG 身份</string>

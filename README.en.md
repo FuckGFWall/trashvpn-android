@@ -4,17 +4,18 @@
 
 <h1 align="center">TrashVPN</h1>
 <p align="center"><a href="README.md">简体中文</a> · English · <a href="README.fa.md">فارسی</a></p>
-<p align="center"><a href="https://github.com/FuckGFWall/trashvpn-android/releases">Download</a> · <a href="https://itmanager.top/docs/android-privacy-policy.html">Privacy Policy</a> · <a href="LICENSE">GPL-3.0</a></p>
+<p align="center"><a href="https://github.com/FuckGFWall/trashvpn-android/releases">Download</a> · <a href="LICENSE">GPL-3.0</a></p>
 
 **TrashVPN** is a third-party Cloudflare WARP client for Android that uses the Mihomo core and supports automatic registration, endpoint selection, and node export.
 
-Requires **Android 8.0 or later**.
+Supports **Android 8.0+**.
 
 ## Features
 
 - **Multiple protocols:** WireGuard (WG), AmneziaWG (AWG), and MASQUE (HTTP/3).
 - **Automatic registration and endpoint selection:** Register a WARP identity, find usable endpoints, or manually select nodes and test their latency.
-- **Automatic selection of the best node:** Automatically choose the best node based on its latency during endpoint selection. After connecting, TrashVPN checks availability and automatically tries the next node if the selected node does not work.
+- **Automatic selection of stable nodes:** Scanning does not start the system VPN. A single Mihomo core handles concurrent screening and repeated HTTPS checks. Ranking favors reliability and stability before P90 and mean latency. After connecting, TrashVPN verifies the tunnel separately and tries the next node if needed.
+- **MASQUE (H3) selection:** Tests previously verified nodes and known gateways first, then samples from two WARP IPv4 subnets in rotation. Resume a paused plan, or long-press **Resume scan** and choose **Scan again** to draw a new sample.
 - **Node export:** Export valid cached nodes for compatible clients.
 - **Connection settings:** Configure endpoint selection intensity, MTU, and DNS.
 - **Multiple languages:** Simplified Chinese, Traditional Chinese, English, and Persian.

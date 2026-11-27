@@ -48,16 +48,18 @@ public final class WarpVpnService extends VpnService {
         final ExitLocation location;
         final ActiveNode node;
         final Network network;
+        final long latencyMs; // 0 when no verified measurement is available
 
         Status(Stage stage,int title,int detail) {
             this(stage,title,detail,null);
         }
 
         Status(Stage stage,int title,int detail,ScanService.Job retryScan) {
-            this(stage,new UiText(title),detail,retryScan,ExitLocation.UNKNOWN,null,null);
+            this(stage,new UiText(title),detail,retryScan,ExitLocation.UNKNOWN,null,null,0);
         }
 
-        private Status(Stage stage,UiText title,int detail,ScanService.Job retryScan,ExitLocation location,ActiveNode node,Network network) {
+        private Status(Stage stage,UiText title,int detail,ScanService.Job retryScan,ExitLocation location,
+                       ActiveNode node,Network network,long latencyMs) {
             this.stage = stage;
             this.title = title;
             this.detail = new UiText(detail);
@@ -65,19 +67,20 @@ public final class WarpVpnService extends VpnService {
             this.location = location;
             this.node = node;
             this.network=network;
+            this.latencyMs=latencyMs;
         }
 
         static Status connected(ExitLocation location,ActiveNode node) {
-            return connected(location,node,null);
+            return connected(location,node,null,0);
         }
-        static Status connected(ExitLocation location,ActiveNode node,Network network) {
-            return new Status(Stage.CONNECTED,new UiText(R.string.connected),R.string.vpn_verified,null,location,node,network);
+        static Status connected(ExitLocation location,ActiveNode node,Network network,long latencyMs) {
+            return new Status(Stage.CONNECTED,new UiText(R.string.connected),R.string.vpn_verified,null,location,node,network,latencyMs);
         }
         Status switchingNode() {
-            return new Status(Stage.SWITCHING,new UiText(R.string.switching_node),R.string.checking_target,null,location,node,network);
+            return new Status(Stage.SWITCHING,new UiText(R.string.switching_node),R.string.checking_target,null,location,node,network,latencyMs);
         }
         Status switchRejected() {
-            return new Status(Stage.CONNECTED,new UiText(R.string.connected),R.string.switch_rejected,null,location,node,network);
+            return new Status(Stage.CONNECTED,new UiText(R.string.connected),R.string.switch_rejected,null,location,node,network,latencyMs);
         }
 
         boolean busy() {
@@ -241,7 +244,7 @@ public final class WarpVpnService extends VpnService {
 
     private boolean establishAndCheck(WarpProfile.Protocol p,String ep,TunnelIdentity id,UiText step,boolean automatic) throws Exception {
         checkCancel();
-        progress(new Status(Stage.VERIFYING,step,R.string.vpn_verify_exit,null,ExitLocation.UNKNOWN,null,null));
+        progress(new Status(Stage.VERIFYING,step,R.string.vpn_verify_exit,null,ExitLocation.UNKNOWN,null,null,0));
         openTunnel(p, ep, id);
         WarpProbe.Result r = trace();
         if (r == null) { Thread.sleep(400); r = trace(); }
@@ -250,7 +253,7 @@ public final class WarpVpnService extends VpnService {
         DiagnosticLog.info(this,CONNECTION, "PASS " + p + " " + ep + " warp=" + marker + " " + r.elapsedMs + "ms");
         selectedEndpoint=ep;
         selectedLocation=r.location;
-        progress(Status.connected(r.location,new ActiveNode(p,ep,automatic),r.verifiedNetwork));
+        progress(Status.connected(r.location,new ActiveNode(p,ep,automatic),r.verifiedNetwork,Math.max(1,r.elapsedMs)));
         return true;
     }
 
@@ -336,7 +339,10 @@ public final class WarpVpnService extends VpnService {
                     catch(Exception e) { DiagnosticLog.warn(this,CONNECTION,"Old streams could not be closed"); }
                 }
                 DiagnosticLog.info(this,CONNECTION,"HOT_SWITCH "+p+" "+previous+" -> "+verified);
-                Status updated=Status.connected(selectedLocation,new ActiveNode(p,verified,target==null),original.network);
+                long latency=verified.equals(previous)?original.latencyMs:Math.max(1,ok.elapsedMs);
+                ActiveNode chosen=verified.equals(previous) && original.node.automatic()==(target==null)
+                        ?original.node:new ActiveNode(p,verified,target==null);
+                Status updated=Status.connected(selectedLocation,chosen,original.network,latency);
                 main.post(()->{
                     if(!active || cancel.get()) return;
                     getSharedPreferences(NetworkSettings.PREFS,MODE_PRIVATE).edit()
@@ -384,8 +390,10 @@ public final class WarpVpnService extends VpnService {
     }
 
     private PendingIntent openApp() {
-        return PendingIntent.getActivity(this, 1, new Intent(this, MainActivity.class)
-                .setFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP), PendingIntent.FLAG_IMMUTABLE);
+        Intent launch=new Intent(Intent.ACTION_MAIN).setClass(this,MainActivity.class)
+                .addCategory(Intent.CATEGORY_LAUNCHER)
+                .setFlags(Intent.FLAG_ACTIVITY_NEW_TASK|Intent.FLAG_ACTIVITY_SINGLE_TOP);
+        return PendingIntent.getActivity(this,1,launch,PendingIntent.FLAG_IMMUTABLE);
     }
 
     private Notification notification(Status next) {

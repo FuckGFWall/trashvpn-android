@@ -115,6 +115,11 @@ public final class ConnectionDiagnosticsActivity extends Activity {
         readLog();
     }
 
+    @Override protected void onResume() {
+        super.onResume();
+        RecentsIcon.apply(this);
+    }
+
     @Override protected void onStop() {
         started=false;
         DiagnosticLog.unobserve(observer);

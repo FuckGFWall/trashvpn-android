@@ -2,6 +2,7 @@
     <string name="vpn_permission_denied">اندروید اجازهٔ VPN را نداد.</string>
     <string name="exit_country">کشور: %1$s</string>
     <string name="exit_data_center">مرکز داده: %1$s</string>
+    <string name="exit_latency">تأخیر: %1$s</string>
     <string name="active_auto_node">انتخاب خودکار؛ گره فعال: %1$s</string>
     <string name="connection_diagnostics">عیب‌یابی اتصال</string>
     <string name="diagnostics_empty">هنوز گزارشی وجود ندارد. نتایج گزینش گره، اتصال و آزمون تأخیر اینجا نمایش داده می‌شود.</string>
@@ -42,7 +43,7 @@
     <string name="intensity_low">کم</string>
     <string name="intensity_medium">متوسط</string>
     <string name="intensity_high">زیاد</string>
-    <string name="intensity_description">%1$d آزمون هم‌زمان، حداکثر %2$d نامزد و هدف %3$d گره قابل‌استفاده. %4$d آزمون برای هر گره؛ مهلت: %5$d ثانیه.</string>
+    <string name="intensity_description">%1$d آزمون اولیهٔ هم‌زمان، حداکثر %2$d نامزد و هدف %3$d گره قابل‌استفاده. حداکثر %4$d درخواست HTTPS برای هر گره؛ مهلت: %5$d ثانیه.</string>
     <string name="probe_timeout">مهلت آزمون</string>
     <string name="seconds">ثانیه</string>
     <string name="auto_connect_after_scan">اتصال خودکار پس از گزینش</string>
@@ -61,6 +62,7 @@
     <string name="connected">متصل</string>
     <string name="disconnected">قطع</string>
     <string name="scan_again">گزینش دوباره</string>
+    <string name="scan_resume">ادامهٔ گزینش</string>
     <string name="scan_action">گزینش</string>
     <string name="switching_protocol">در حال تغییر پروتکل</string>
     <string name="registering">در حال ثبت در Cloudflare WARP</string>
@@ -77,6 +79,7 @@
     <string name="pausing">در حال مکث</string>
     <string name="pause">مکث</string>
     <string name="vpn_starting">در حال راه‌اندازی VPN</string>
+    <string name="connecting">در حال اتصال</string>
     <string name="vpn_launch_blocked">اندروید مانع راه‌اندازی سرویس VPN شد.</string>
     <string name="register_masque">ثبت هویت MASQUE</string>
     <string name="register_wg">ثبت هویت AWG / WG</string>

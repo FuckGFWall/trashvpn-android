@@ -25,7 +25,7 @@ final class SettingsAbout {
     private record Link(String title,String url,HomeStyle.Symbol.Kind kind,int color) { }
     private static final Link[] LINKS={
             new Link(null,"https://itmanager.top",GLOBE,0xffffa114),
-            new Link("GitHub","https://github.com/FuckGFWall",GITHUB,0xfffafafa),
+            new Link("GitHub","https://github.com/FuckGFWall/trashvpn-android",GITHUB,0xfffafafa),
             new Link("Telegram","https://t.me/+eJ2kUZ3kUJ9jZmNl",TELEGRAM,0xff168df6),
             new Link("YouTube","https://www.youtube.com/@TrashVPN",YOUTUBE,0xffff3c37),
             new Link("X","https://x.com/trashvpn",BRAND_X,0xfffafafa)

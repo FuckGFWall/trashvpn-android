@@ -76,14 +76,14 @@ final class PowerDial extends View {
         canvas.translate((getWidth()-size)/2,(getHeight()-size)/2);
         canvas.scale(size/100,size/100);
 
-        int soft=style.dark?0xff262628:0xfff0f0f2;
-        fill(blend(soft,style.dark?0xff493122:0xffffeee2,level));
+        int center=style.dark?0xff39393d:0xffc3c3ca;
+        int innerRing=style.dark?0xff4d4d51:0xffdcdce2;
+        int outerRing=style.dark?0xff5d5d62:0xffededf0;
+        fill(blend(outerRing,style.dark?0xff51392a:0xfffff2e9,level));
         canvas.drawCircle(50,50,49,paint);
-        fill(blend(style.dark?0xff333336:0xffe3e3e7,style.dark?0xff704b35:0xffffdac2,level));
-        canvas.drawCircle(50,50,45,paint);
-        fill(blend(style.dark?0xff434347:0xffd4d4da,0xffffbc90,level));
-        canvas.drawCircle(50,50,41,paint);
-        fill(style.dark?0xff303032:0xffebebee);
+        fill(blend(innerRing,style.dark?0xff78543e:0xffffc6a1,level));
+        canvas.drawCircle(50,50,43,paint);
+        fill(center);
         canvas.drawCircle(50,50,RADIUS,paint);
         glyph(canvas,isEnabled()?style.muted:style.disabled);
 
@@ -110,7 +110,7 @@ final class PowerDial extends View {
             }
             canvas.restore();
         }
-        stroke(blend(style.dark?0xff57575b:0xffc7c7ce,style.tint,level),1.25f);
+        stroke(blend(center,style.tint,level),1.25f);
         canvas.drawCircle(50,50,RADIUS,paint);
         canvas.restore();
         if(isShown() && ValueAnimator.areAnimatorsEnabled() &&

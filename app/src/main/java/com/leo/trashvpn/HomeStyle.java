@@ -166,7 +166,7 @@ final class HomeStyle {
         private final HomeStyle s;
         private final Matrix sweepTransform=new Matrix();
         private final LinearGradient sweepGradient=new LinearGradient(-1,0,1,0,
-                new int[]{0x00ffb67c,0xbaffb67c,0x00ffb67c},null,Shader.TileMode.CLAMP);
+                new int[]{0x00fff8ef,0xeefff8ef,0x00fff8ef},null,Shader.TileMode.CLAMP);
         private float value;
         private float sweepPosition;
         private int target;
@@ -176,6 +176,7 @@ final class HomeStyle {
         Track(Context c,HomeStyle s) { super(c); this.s=s; }
         void update(int percent,boolean registered,boolean ready,Running running) {
             this.registered=registered; this.ready=ready;
+            if(this.running!=running) stopSweep();
             this.running=running;
             syncSweep(isAttachedToWindow() && getWindowVisibility()==VISIBLE && isShown());
             if(target!=percent) {
@@ -199,7 +200,7 @@ final class HomeStyle {
             }
             if(sweep==null) {
                 sweep=ValueAnimator.ofFloat(0,1);
-                sweep.setDuration(1350);
+                sweep.setDuration(1800);
                 sweep.setRepeatCount(ValueAnimator.INFINITE);
                 sweep.setInterpolator(new LinearInterpolator());
                 sweep.addUpdateListener(a->{
@@ -207,7 +208,10 @@ final class HomeStyle {
                     invalidate();
                 });
             }
-            if(!sweep.isStarted()) sweep.start();
+            if(!sweep.isStarted()) {
+                sweepPosition=0;
+                sweep.start();
+            }
         }
         private void stopSweep() {
             if(sweep!=null && sweep.isStarted()) {
@@ -252,16 +256,15 @@ final class HomeStyle {
             c.restore();
         }
         private void drawSweep(Canvas c,float y,float radius,float milestone,float thumb) {
-            float start=running==Running.REGISTER?0:milestone;
             float stop=running==Running.REGISTER?Math.min(milestone,thumb):thumb;
-            if(stop<=start) return;
-            float halfBand=Math.min(5*radius,(stop-start)*.4f);
-            float center=start-halfBand+(stop-start+2*halfBand)*sweepPosition;
+            if(stop<=0) return;
+            float halfBand=Math.min(5.5f*radius,stop*.4f);
+            float center=-halfBand+(stop+2*halfBand)*sweepPosition;
             sweepTransform.setScale(halfBand,1);
             sweepTransform.postTranslate(center,0);
             sweepGradient.setLocalMatrix(sweepTransform);
             c.save();
-            c.clipRect(start,y-radius,stop,y+radius);
+            c.clipRect(0,y-radius,stop,y+radius);
             paint.setColor(Color.WHITE);
             paint.setShader(sweepGradient);
             c.drawRoundRect(0,y-radius,getWidth(),y+radius,radius,radius,paint);

@@ -101,7 +101,7 @@ def main():
         tap("自动选择","content-desc")
         observed={}
         before=set(log())
-        tap(["优选","重新优选"] if args.mode=="fresh" else "连接 VPN",
+        tap(["优选","继续优选","重新优选"] if args.mode=="fresh" else "连接 VPN",
             "text" if args.mode=="fresh" else "content-desc")
         if args.home:
             adb("shell","input","keyevent","KEYCODE_HOME")

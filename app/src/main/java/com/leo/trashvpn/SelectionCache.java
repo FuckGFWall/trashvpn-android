@@ -29,8 +29,18 @@ final class SelectionCache {
                     JSONObject o = array.getJSONObject(i);
                     String ep=o.getString("ep");
                     if (!NodeSelection.allowed(protocol,ep)) continue;
-                    NodeSelection.Score s=new NodeSelection.Score(ep,o.getInt("ok"),o.getInt("n"),
-                            o.getLong("ms"),o.getLong("t"));
+                    long time=o.getLong("t");
+                    NodeSelection.Score s;
+                    if (o.has("samples")) {
+                        JSONArray raw=o.getJSONArray("samples");
+                        if (raw.length()>ScanIntensity.HIGH.samples) continue;
+                        long[] samples=new long[raw.length()];
+                        for (int j=0; j<samples.length; j++) samples[j]=raw.getLong(j);
+                        s=NodeSelection.Score.measured(ep,samples,time);
+                    } else {
+                        // No invented percentiles/jitter for data saved by older versions.
+                        s=new NodeSelection.Score(ep,o.getInt("ok"),o.getInt("n"),o.getLong("ms"),time);
+                    }
                     if (s.fresh(now)) scores.add(s);
                 } catch (JSONException | IllegalArgumentException ignored) { }
             }
@@ -52,10 +62,21 @@ final class SelectionCache {
         List<NodeSelection.Score> sorted=new ArrayList<>(scores);
         Collections.sort(sorted);
         JSONArray arr=new JSONArray();
+        Set<String> seen=new HashSet<>();
         for (NodeSelection.Score s:sorted) {
             if (arr.length()==level.cacheSize) break;
-            arr.put(new JSONObject().put("ep",s.endpoint).put("ok",s.successes).put("n",s.attempts)
-                    .put("ms",s.ms).put("t",s.time));
+            if (!NodeSelection.allowed(protocol,s.endpoint) || !seen.add(s.endpoint)) continue;
+            JSONObject row=new JSONObject().put("ep",s.endpoint).put("ok",s.successes).put("n",s.attempts)
+                    .put("ms",s.ms).put("t",s.time);
+            // Persist the tiny raw sample set, not a hardcoded score. Any future ranking
+            // change can recompute its metrics; the original count/mean fields remain readable.
+            long[] samples=s.samples();
+            if (samples!=null) {
+                JSONArray raw=new JSONArray();
+                for (long sample:samples) raw.put(sample);
+                row.put("samples",raw);
+            }
+            arr.put(row);
         }
         // Write verified results before the journal advances past the corresponding endpoint.
         if (!prefs.edit().putString(key,arr.toString()).commit()) throw new JSONException("Could not persist rankings");

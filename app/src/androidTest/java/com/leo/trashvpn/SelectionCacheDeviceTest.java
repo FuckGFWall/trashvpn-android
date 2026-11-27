@@ -11,6 +11,59 @@ import static org.junit.Assert.*;
 
 @RunWith(AndroidJUnit4.class)
 public class SelectionCacheDeviceTest {
+    @Test public void masqueCacheRoundTripsANewHostAndRejectsOutOfScopePairs() throws Exception {
+        Context base=InstrumentationRegistry.getInstrumentation().getTargetContext();
+        SharedPreferences fixture=base.getSharedPreferences("qa-masque-cache",Context.MODE_PRIVATE);
+        Context ctx=new ContextWrapper(base) {
+            @Override public SharedPreferences getSharedPreferences(String name,int mode) { return fixture; }
+        };
+        String legal="162.159.199.180:4500", invalid="162.159.200.180:4500", wrongPort="162.159.199.180:2408";
+        long now=System.currentTimeMillis();
+        NodeSelection.Score measured=NodeSelection.Score.measured(legal,new long[]{180,185,190,200},now);
+        SelectionCache cache=new SelectionCache(ctx,WarpProfile.Protocol.MASQUE,ScanIntensity.MEDIUM);
+        cache.save(Arrays.asList(measured,measured,NodeSelection.Score.measured(invalid,new long[]{1,1,1,1},now),
+                NodeSelection.Score.measured(wrongPort,new long[]{1,1,1,1},now)));
+        String key="MASQUE.device";
+        JSONArray written=new JSONArray(fixture.getString(key,"[]"));
+        assertEquals(1,written.length());
+        JSONObject legalRow=written.getJSONObject(0);
+        JSONArray withBadRow=new JSONArray().put(new JSONObject(legalRow.toString()).put("ep",invalid)).put(legalRow);
+        assertTrue(fixture.edit().putString(key,withBadRow.toString()).commit());
+        List<NodeSelection.Score> loaded=cache.load();
+        assertEquals(1,loaded.size());
+        assertEquals(legal,loaded.get(0).endpoint);
+        assertArrayEquals(measured.samples(),loaded.get(0).samples());
+    }
+
+    @Test public void cacheRecomputesQualityFromSamplesAndStillLoadsLegacyRows() throws Exception {
+        Context base=InstrumentationRegistry.getInstrumentation().getTargetContext();
+        SharedPreferences fixture=base.getSharedPreferences("qa-selection-quality",Context.MODE_PRIVATE);
+        Context ctx=new ContextWrapper(base) {
+            @Override public SharedPreferences getSharedPreferences(String name,int mode) { return fixture; }
+        };
+        WarpProfile.Protocol p=WarpProfile.Protocol.WG;
+        String steady=p.endpoints.get(0), volatileNode=p.endpoints.get(1), legacy=p.endpoints.get(2);
+        long now=System.currentTimeMillis();
+        SelectionCache cache=new SelectionCache(ctx,p,ScanIntensity.MEDIUM);
+        cache.save(Arrays.asList(
+                NodeSelection.Score.measured(volatileNode,new long[]{10,60,145,240},now),
+                NodeSelection.Score.measured(steady,new long[]{180,185,190,200},now),
+                new NodeSelection.Score(legacy,2,2,15,now)));
+        JSONArray rows=new JSONArray(fixture.getString("WG.device","[]"));
+        assertTrue(rows.getJSONObject(0).has("samples"));
+        assertFalse(rows.getJSONObject(2).has("samples"));
+        List<NodeSelection.Score> restored=cache.load();
+        assertEquals(3,restored.size());
+        assertEquals(steady,restored.get(0).endpoint);
+        assertEquals(volatileNode,restored.get(1).endpoint);
+        assertEquals(legacy,restored.get(2).endpoint);
+        assertArrayEquals(new long[]{180,185,190,200},restored.get(0).samples());
+        assertEquals(187.5,restored.get(0).medianMs,0);
+        assertEquals(200,restored.get(0).p90Ms);
+        assertEquals(5,restored.get(0).jitterMs,0);
+        assertEquals(-1,restored.get(2).jitterMs,0);
+    }
+
     @Test public void exportMergesAllLevelsAndKeepsOnlyFreshNodesOfTheSelectedProtocol() throws Exception {
         Context base=InstrumentationRegistry.getInstrumentation().getTargetContext();
         SharedPreferences fixtures=base.getSharedPreferences("qa-selection-export",Context.MODE_PRIVATE);

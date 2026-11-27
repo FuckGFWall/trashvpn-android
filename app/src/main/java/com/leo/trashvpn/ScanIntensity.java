@@ -2,11 +2,11 @@ package com.leo.trashvpn;
 
 import android.content.Context;
 
-/** Android probes serially through one Mihomo/TUN, not a desktop worker pool. */
+/** Concurrent coarse probes share one core; fine HTTPS probes are serial and never use TUN. */
 enum ScanIntensity {
-    LOW(R.string.intensity_low, 6, 2, 1, 30, 1, 2),
-    MEDIUM(R.string.intensity_medium, 12, 4, 2, 65, 2, 5),
-    HIGH(R.string.intensity_high, 24, 8, 3, 130, 4, 8);
+    LOW(R.string.intensity_low, 6, 2, 3, 30, 1, 2),
+    MEDIUM(R.string.intensity_medium, 12, 4, 4, 65, 2, 5),
+    HIGH(R.string.intensity_high, 24, 8, 5, 130, 4, 8);
 
     final int label;
     final int candidates, goal, samples, seconds, historyHints, cacheSize;

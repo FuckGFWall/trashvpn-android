@@ -3,6 +3,7 @@ package com.leo.trashvpn;
 import android.content.Context;
 import android.os.Build;
 import android.os.ParcelFileDescriptor;
+import android.os.SystemClock;
 import android.system.Os;
 
 import org.json.JSONObject;
@@ -23,16 +24,27 @@ import io.github.oviron.libmihomo.TunInterface;
 final class MihomoSession implements AutoCloseable {
     // JNI core is process-wide. Never let a cancelled Activity scan retire a later VPN profile.
     private static final java.util.concurrent.Semaphore OWNER = new java.util.concurrent.Semaphore(1, true);
+    private static final long OWNER_WAIT_MS = 15_000;
+    private static final long MIN_SCAN_SETUP_MS = 500;
     private boolean owned;
     private final Clash core = Clash.INSTANCE;
     private Context context;
     private boolean tunStarted;
 
     void configure(Context context, String yaml) throws Exception {
-        if (!OWNER.tryAcquire(15, TimeUnit.SECONDS)) throw new IOException("Mihomo busy");
+        if (!configureBefore(context,yaml,Long.MAX_VALUE)) throw new IOException("Mihomo busy");
+    }
+
+    /** Do not wait for a prior owner or start a new profile at the expense of the scan deadline. */
+    boolean configureBefore(Context context,String yaml,long deadline) throws Exception {
+        long wait=deadline-SystemClock.elapsedRealtime()-MIN_SCAN_SETUP_MS;
+        if (wait<=0 || !OWNER.tryAcquire(Math.min(wait,OWNER_WAIT_MS),TimeUnit.MILLISECONDS)) return false;
         owned = true;
+        if (deadline-SystemClock.elapsedRealtime()<=MIN_SCAN_SETUP_MS) return false;
         this.context = context.getApplicationContext();
         applyProfile(context, yaml);
+        // Applying/retiring a native profile must finish under this owner even if no probe time remains.
+        return SystemClock.elapsedRealtime()<deadline;
     }
 
     private void applyProfile(Context context, String yaml) throws Exception {

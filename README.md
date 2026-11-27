@@ -4,17 +4,18 @@
 
 <h1 align="center">TrashVPN</h1>
 <p align="center">简体中文 · <a href="README.en.md">English</a> · <a href="README.fa.md">فارسی</a></p>
-<p align="center"><a href="https://github.com/FuckGFWall/trashvpn-android/releases">下载</a> · <a href="https://itmanager.top/docs/android-privacy-policy.html">隐私政策</a> · <a href="LICENSE">GPL-3.0</a></p>
+<p align="center"><a href="https://github.com/FuckGFWall/trashvpn-android/releases">下载</a> · <a href="LICENSE">GPL-3.0</a></p>
 
 **TrashVPN** 是一款第三方 Cloudflare WARP Android 客户端，使用 Mihomo 内核，支持自动注册、节点优选和节点导出。
 
-支持 **Android 8.0 及以上**。
+支持 **Android 8.0+**。
 
 ## 功能
 
 - **多种协议**：WireGuard（WG）、AmneziaWG（AWG）和 MASQUE（HTTP/3）。
 - **自动注册与节点优选**：注册 WARP 身份，筛选可用节点，也可以手动选择节点并测试延迟。
-- **自动选择最优节点**：根据优选时的延迟自动选择最优节点。连接后会自动检查可用性，如果无法使用，则自动尝试下一节点.
+- **自动选择稳定节点**：优选不会启动系统 VPN。并发粗筛后，在同一个 Mihomo 内核中做多次 HTTPS 精筛及复测，优先考虑成功率和稳定性，再比较 P90 和平均耗时。真正连接后仍会单独验证，不可用时会尝试下一节点。
+- **MASQUE (H3) 优选**：先测试历史成功节点和已知网关，再交错抽样两个 WARP IPv4 网段。暂停后可继续原计划；长按「继续优选」也可选择「重新优选」，从新样本开始。
 - **节点导出**：将有效缓存节点导出到兼容的客户端。
 - **连接设置**：支持调整优选强度、MTU 和 DNS。
 - **多语言**：简体中文、繁體中文、English 和 فارسی。

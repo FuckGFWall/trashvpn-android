@@ -184,6 +184,13 @@ public class SettingsDeviceTest {
             int[] position=new int[4];
             tester.runOnMainSync(()->{
                 IntensitySlider slider=activity.findViewById(R.id.settings_intensity);
+                assertEquals(Math.round(18*slider.getResources().getDisplayMetrics().density),
+                        slider.getThumb().getIntrinsicWidth());
+                android.graphics.drawable.LayerDrawable track=
+                        (android.graphics.drawable.LayerDrawable)slider.getProgressDrawable();
+                int thickness=Math.round(4*slider.getResources().getDisplayMetrics().density);
+                assertEquals(thickness,track.findDrawableByLayerId(android.R.id.background).getBounds().height());
+                assertEquals(thickness,track.findDrawableByLayerId(android.R.id.progress).getBounds().height());
                 slider.getLocationOnScreen(position);
                 position[0]+=slider.getPaddingLeft();
                 position[1]+=slider.getHeight()/2;

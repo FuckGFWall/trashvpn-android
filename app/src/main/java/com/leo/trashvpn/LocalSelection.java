@@ -24,6 +24,7 @@ final class LocalSelection {
     }
     interface Progress { void show(Step step,int title,UiText detail,int percent); }
     private static final String HOST = "www.cloudflare.com";
+    private static final long H3_CLEANUP_RESERVE_MS=1_000;
     private static final ScheduledThreadPoolExecutor TIMER=new ScheduledThreadPoolExecutor(1,r->{
         Thread t=new Thread(r,"probe-deadline"); t.setDaemon(true); return t;
     });
@@ -31,10 +32,15 @@ final class LocalSelection {
 
     static WarpProbe.Result trace(int port,boolean handshakeOnly,int timeoutMs,AtomicBoolean cancel) throws IOException {
         long start = SystemClock.elapsedRealtime();
+        Thread caller=Thread.currentThread();
+        if (cancel.get() || caller.isInterrupted()) throw new InterruptedIOException();
         try (Socket local = new Socket(Proxy.NO_PROXY)) {
             // SO_TIMEOUT alone resets for each read. Close the socket at the total attempt deadline.
+            AtomicBoolean timedOut=new AtomicBoolean();
             ScheduledFuture<?> timer=TIMER.scheduleWithFixedDelay(()->{
-                if(cancel.get() || SystemClock.elapsedRealtime()-start>=timeoutMs)
+                boolean expired=SystemClock.elapsedRealtime()-start>=timeoutMs;
+                if (expired) timedOut.set(true);
+                if(cancel.get() || caller.isInterrupted() || expired)
                     try { local.close(); } catch(IOException ignored) { }
             },Math.min(timeoutMs,100),100,TimeUnit.MILLISECONDS);
             try {
@@ -54,6 +60,11 @@ final class LocalSelection {
                     String response = new String(KeyStoreFile.readBounded(tls.getInputStream(), 32768), StandardCharsets.US_ASCII);
                     return WarpProbe.Result.fromTrace(traceBody(response),SystemClock.elapsedRealtime()-start);
                 }
+            } catch (IOException e) {
+                if (!timedOut.get()) throw e;
+                SocketTimeoutException timeout=new SocketTimeoutException("Trace probe deadline");
+                timeout.initCause(e);
+                throw timeout;
             } finally { timer.cancel(false); }
         }
     }
@@ -80,65 +91,61 @@ final class LocalSelection {
     }
 
     private static NodeSelection.Score measure(Context ctx, WarpProfile.Protocol p, TunnelIdentity id,
-            String ep,int samples,NetworkSettings settings,long deadline,AtomicBoolean cancel) throws Exception {
+            String ep,ScanIntensity level,NetworkSettings settings,long deadline,AtomicBoolean cancel) throws Exception {
         check(cancel);
         int port;
         try (ServerSocket free = new ServerSocket(0,1,InetAddress.getByName("127.0.0.1"))) { port = free.getLocalPort(); }
-        int ok=0, attempted=0;
-        long total = 0;
+        long[] samples;
         try (MihomoSession session = new MihomoSession()) {
-            session.configure(ctx, probeProfile(WarpProfile.render(p,ep,id,settings),port));
-            for (int n=0; n<samples; n++) {
-                check(cancel);
-                int ms=budgetMillis(settings,deadline);
-                if(ms==0) break;
-                attempted++;
+            if (!session.configureBefore(ctx,probeProfile(WarpProfile.render(p,ep,id,settings),port),deadline))
+                throw new SelectionVerification.BudgetReached();
+            samples=SelectionVerification.measure(level,settings.probeMillis(),deadline,cancel,
+                    SystemClock::elapsedRealtime,Thread::sleep,ms->{
                 try {
                     WarpProbe.Result r = trace(port,false,ms,cancel);
-                    if (r.marker.verified()) { ok++; total += r.elapsedMs; }
+                    if (r.marker.verified()) return Math.max(1,r.elapsedMs);
                 } catch (IOException e) {
                     DiagnosticLog.info(ctx,SELECTION,"Local trace failed: "+e.getClass().getSimpleName());
                 }
-            }
+                return 0;
+            });
         }
         check(cancel);
-        if(attempted==0) throw new ScanBudgetReached();
-        return ok==0 ? null : new NodeSelection.Score(ep,ok,attempted,Math.max(1,total/ok),System.currentTimeMillis());
+        return samples==null ? null : NodeSelection.Score.measured(ep,samples,System.currentTimeMillis());
     }
-
-    static int budgetMillis(NetworkSettings settings,long deadline) {
-        return (int)Math.max(0,Math.min(settings.probeMillis(),deadline-SystemClock.elapsedRealtime()));
-    }
-
-    private static final class ScanBudgetReached extends Exception {}
 
     private static ScanJournal prepare(Context context,WarpProfile.Protocol p,ScanIntensity level,
-                                       List<NodeSelection.Score> current) throws Exception {
+                                       List<NodeSelection.Score> current,boolean resample) throws Exception {
         List<String> hints=new ArrayList<>();
         for(NodeSelection.Score score:current) hints.add(score.endpoint);
         for(ScanIntensity other:ScanIntensity.values()) if(level!=other)
             for(NodeSelection.Score score:new SelectionCache(context,p,other).load()) hints.add(score.endpoint);
-        return ScanJournal.open(context,p,level,hints);
+        return ScanJournal.open(context,p,level,hints,resample);
     }
 
     static List<NodeSelection.Score> run(Context ctx, WarpProfile.Protocol p,
-            ScanIntensity level, AtomicBoolean cancel, Progress ui) throws Exception {
+            ScanIntensity level, boolean resample, AtomicBoolean cancel, Progress ui) throws Exception {
+        // Do not spend the last second of the H3 budget on a new network request:
+        // retiring the core profile and committing the resume cursor also take time.
+        long deadline=SystemClock.elapsedRealtime()+level.seconds*1000L
+                -(p==WarpProfile.Protocol.MASQUE ? H3_CLEANUP_RESERVE_MS : 0);
         ui.show(Step.PREPARE,R.string.scan_load_history,new UiText(R.string.scan_continue_background),5);
         TunnelIdentity id = WarpRegistration.identity(ctx,p);
         SelectionCache cache = new SelectionCache(ctx,p,level);
         NetworkSettings settings=NetworkSettings.load(ctx);
-        long deadline=SystemClock.elapsedRealtime()+level.seconds*1000L;
         List<NodeSelection.Score> old = cache.load();
-        ScanJournal state=prepare(ctx,p,level,old);
+        check(cancel);
+        ScanJournal state=prepare(ctx,p,level,old,resample);
         if(!state.pending.isEmpty())
             ui.show(Step.SCREEN,R.string.scan_resume_candidates,new UiText(0),12);
         DiagnosticLog.info(ctx,SELECTION,"SCAN "+p+" "+level.name()+" cursor="+state.cursor+" candidates="+state.plan.size()
-                +" samples="+level.samples+" timeout="+settings.probeSeconds+"s no-tun");
+                +" samples="+level.samples+" timeout="+settings.probeSeconds+"s budget="+level.seconds+"s no-tun");
         List<NodeSelection.Score> passed=new ArrayList<>();
         int waves=0;
         while (SystemClock.elapsedRealtime()<deadline && passed.size()<level.goal) {
             check(cancel);
-            if (state.pending.isEmpty() || (waves==1 && state.cursor<state.plan.size())) {
+            // Check already-qualified H3 candidates before spending more of the budget on speculative IPs.
+            if (state.pending.isEmpty() || (p!=WarpProfile.Protocol.MASQUE && waves==1 && state.cursor<state.plan.size())) {
                 if (state.cursor>=state.plan.size()) break;
                 int end=Math.min(state.cursor+level.workers(),state.plan.size());
                 List<String> wave=state.plan.subList(state.cursor,end);
@@ -158,13 +165,15 @@ final class LocalSelection {
             ui.show(Step.VERIFY,R.string.scan_fine,new UiText(R.string.scan_candidate_results,ep,passed.size(),level.goal),
                     58+40*passed.size()/level.goal);
             NodeSelection.Score s;
-            try { s=measure(ctx,p,id,ep,level.samples,settings,deadline,cancel); }
-            catch(ScanBudgetReached e) { break; } // leave this node pending for the next run
+            try { s=measure(ctx,p,id,ep,level,settings,deadline,cancel); }
+            catch(SelectionVerification.BudgetReached e) { break; } // leave this node pending for the next run
             check(cancel);
             old.removeIf(x -> x.endpoint.equals(ep));
             if (s!=null) {
                 old.add(s); passed.add(s);
-                DiagnosticLog.info(ctx,SELECTION,"SAMPLE "+p+" "+ep+" "+s.successes+"/"+s.attempts+" "+s.ms+"ms");
+                DiagnosticLog.info(ctx,SELECTION,String.format(Locale.ROOT,
+                        "SAMPLE %s %s %d/%d (%.0f%%) mean=%dms median=%.1fms p90=%dms jitter=%.1fms",
+                        p,ep,s.successes,s.attempts,100*s.successRate(),s.ms,s.medianMs,s.p90Ms,s.jitterMs));
             }
             if(passed.size()==level.goal)
                 ui.show(Step.SUMMARY,R.string.scan_update_cache,new UiText(0),99);
@@ -173,6 +182,11 @@ final class LocalSelection {
             state.save();
         }
         check(cancel);
+        boolean goalMet=passed.size()>=level.goal;
+        boolean exhausted=state.cursor==state.plan.size() && state.pending.isEmpty();
+        if (p==WarpProfile.Protocol.MASQUE && (goalMet || exhausted))
+            state.finish();
+        Collections.sort(passed);
         return passed;
     }
 }

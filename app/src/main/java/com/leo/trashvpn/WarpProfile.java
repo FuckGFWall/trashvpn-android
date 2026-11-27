@@ -46,6 +46,10 @@ final class WarpProfile {
     }
 
     static String proxyYaml(Protocol protocol,String endpoint,String name,TunnelIdentity identity,NetworkSettings settings) {
+        return proxyYaml(protocol,endpoint,name,identity,settings,settings.probeSeconds);
+    }
+
+    static String proxyYaml(Protocol protocol,String endpoint,String name,TunnelIdentity identity,NetworkSettings settings,int handshakeSeconds) {
         if (!NodeSelection.allowed(protocol, endpoint)) throw new IllegalArgumentException("Invalid WARP endpoint");
         if (!name.matches("[A-Za-z0-9_.-]{1,64}")) throw new IllegalArgumentException("Invalid node name");
         int separator = endpoint.indexOf(':');
@@ -71,7 +75,7 @@ final class WarpProfile {
                     ip-stack:
                       mode: gvisor
                     handshake-timeout: %d
-                """, ip, port, identity.privateKey, identity.peerKey, settings.probeSeconds);
+                """, ip, port, identity.privateKey, identity.peerKey, handshakeSeconds);
         }
         String wg = common + String.format(Locale.ROOT, """
                     type: wireguard
